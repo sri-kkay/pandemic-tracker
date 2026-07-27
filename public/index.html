@@ -150,6 +150,17 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
   margin-top:8px;padding-top:8px;border-top:1px solid rgba(29,38,50,.8);
 }
 .updrow{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+#routinetoggle{
+  display:flex;align-items:center;gap:7px;padding:8px 12px;
+  border-bottom:1px solid var(--hairline);cursor:pointer;
+  font-size:11px;color:var(--ink-mute);
+}
+#routinetoggle input{accent-color:var(--s2);width:12px;height:12px;flex:none;cursor:pointer}
+#routinetoggle:hover{color:var(--ink)}
+#routinecount{
+  margin-left:auto;font-family:var(--font-num);font-size:9px;color:var(--ink-dim);
+  border:1px solid var(--hairline);padding:1px 5px;border-radius:2px;white-space:nowrap;
+}
 #feedsort{display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid var(--hairline)}
 #feedsort button{
   flex:1;font-family:var(--font-num);font-size:8.5px;letter-spacing:.1em;
@@ -235,6 +246,11 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
       <input type="range" id="thr" min="0" max="100" value="0" step="5">
       <span id="thrval">0</span>
     </div>
+    <label id="routinetoggle">
+      <input type="checkbox" id="showroutine">
+      <span>Include routine weekly surveillance</span>
+      <span id="routinecount"></span>
+    </label>
     <div id="feedsort">
       <button class="on" data-sort="recent">Newest</button>
       <button data-sort="severity">Worst</button>
@@ -545,7 +561,7 @@ const S = {
   byISO:new Map(), continents:new Map(),
   view:{level:'world', continent:null, iso:null, region:null, city:null},
   lod:'world',          // world | region | city
-  hover:null, threshold:0, tab:'treatments', sort:'recent',
+  hover:null, threshold:0, tab:'treatments', sort:'recent', showRoutine:false,
   entities:new Map()    // resolved severity per key
 };
 
@@ -1340,7 +1356,7 @@ function renderFeed(){
     (rec.diseases || []).forEach(d=>{
       rows.push({ level:'Country', iso, place, region:null,
         name:d.name, sev:diseaseSeverity(d) ?? entitySeverity(rec),
-        asOf:d.asOf, cases:d.cases, source:d.source });
+        asOf:d.asOf, cases:d.cases, source:d.source, routine:!!d.routine });
     });
   }
 
@@ -1350,7 +1366,7 @@ function renderFeed(){
     (rec.diseases || []).forEach(d=>{
       rows.push({ level:'State', iso, place:region, region,
         name:d.name, sev:diseaseSeverity(d) ?? entitySeverity(rec),
-        asOf:d.asOf, cases:d.cases, source:d.source });
+        asOf:d.asOf, cases:d.cases, source:d.source, routine:!!d.routine });
     });
   }
 
@@ -1360,7 +1376,7 @@ function renderFeed(){
     (rec.diseases || []).forEach(d=>{
       rows.push({ level:'City', iso, place:city, region:null,
         name:d.name, sev:diseaseSeverity(d) ?? entitySeverity(rec),
-        asOf:d.asOf, cases:d.cases, source:d.source });
+        asOf:d.asOf, cases:d.cases, source:d.source, routine:!!d.routine });
     });
   }
 
@@ -1371,16 +1387,23 @@ function renderFeed(){
   };
   rows.sort(sorters[S.sort] || sorters.recent);
 
-  const vis = rows.filter(r => (r.sev ?? 0) >= S.threshold);
+  const routineCount = rows.filter(r => r.routine).length;
+  $('#routinecount').textContent = routineCount ? routineCount + ' hidden' : '';
+  if(S.showRoutine) $('#routinecount').textContent = routineCount + ' shown';
+
+  const vis = rows
+    .filter(r => S.showRoutine || !r.routine)
+    .filter(r => (r.sev ?? 0) >= S.threshold);
 
   // headline: how current is this dataset overall?
-  const dated = rows.map(r => ageDays(r.asOf)).filter(v => v != null);
+  const counted = S.showRoutine ? rows : rows.filter(r => !r.routine);
+  const dated = counted.map(r => ageDays(r.asOf)).filter(v => v != null);
   const newest = dated.length ? Math.min(...dated) : null;
-  const undated = rows.length - dated.length;
+  const undated = counted.length - dated.length;
 
   $('#feedhead').innerHTML = dated.length
-    ? `${rows.length} reports · newest ${ago(newest)}${undated ? ` · ${undated} undated` : ''}`
-    : `${rows.length} reports · no dates available`;
+    ? `${counted.length} reports · newest ${ago(newest)}${undated ? ` · ${undated} undated` : ''}`
+    : `${counted.length} reports · no dates available`;
 
   $('#feedlist').innerHTML = vis.length ? vis.map(r=>{
     const t = tierOf(r.sev);
@@ -1391,6 +1414,7 @@ function renderFeed(){
         <div class="ftitle">${esc(r.name)} — ${esc(r.place)}</div>
         <div class="fmeta" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <span class="flevel">${r.level}</span>
+          ${r.routine ? '<span class="flevel" style="opacity:.65">routine</span>' : ''}
           <span>${r.cases != null ? fmt(r.cases)+' cases' : 'no count'}</span>
           <span style="color:${t.hex}">${t.name}</span>
         </div>
@@ -1530,6 +1554,7 @@ function bindUI(){
       b.textContent = p.classList.contains('closed') ? '+' : '−'; };
   });
   $('#thr').oninput = e=>{ S.threshold = +e.target.value; $('#thrval').textContent = e.target.value; renderFeed(); };
+  $('#showroutine').onchange = e=>{ S.showRoutine = e.target.checked; renderFeed(); };
   document.querySelectorAll('#feedsort button').forEach(b=>{
     b.onclick = ()=>{
       document.querySelectorAll('#feedsort button').forEach(x=>x.classList.remove('on'));
