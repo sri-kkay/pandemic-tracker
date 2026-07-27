@@ -33,7 +33,7 @@ const ISO = {
   'lesotho':'LSO','liberia':'LBR','libya':'LBY','madagascar':'MDG','malawi':'MWI',
   'mali':'MLI','mauritania':'MRT','mauritius':'MUS','morocco':'MAR','mozambique':'MOZ',
   'namibia':'NAM','niger':'NER','nigeria':'NGA','rwanda':'RWA','senegal':'SEN',
-  'seychelles':'SYC','sierra leone':'SLE','somalia':'SOM','south africa':'ZAF',
+  'seychelles':'SYC','reunion':'REU','la reunion':'REU','mayotte':'MYT','sierra leone':'SLE','somalia':'SOM','south africa':'ZAF',
   'south sudan':'SSD','sudan':'SDN','togo':'TGO','tunisia':'TUN','uganda':'UGA',
   'united republic of tanzania':'TZA','tanzania':'TZA','zambia':'ZMB','zimbabwe':'ZWE',
 
@@ -45,7 +45,7 @@ const ISO = {
   'laos':'LAO',"lao people's democratic republic":'LAO','lebanon':'LBN',
   'malaysia':'MYS','maldives':'MDV','mongolia':'MNG','myanmar':'MMR','burma':'MMR',
   'nepal':'NPL','oman':'OMN','pakistan':'PAK','philippines':'PHL','qatar':'QAT',
-  'saudi arabia':'SAU','singapore':'SGP','south korea':'KOR','republic of korea':'KOR',
+  'saudi arabia':'SAU','kingdom of saudi arabia':'SAU','singapore':'SGP','south korea':'KOR','republic of korea':'KOR',
   'sri lanka':'LKA','syria':'SYR','syrian arab republic':'SYR','taiwan':'TWN',
   'tajikistan':'TJK','thailand':'THA','timor-leste':'TLS','east timor':'TLS',
   'turkey':'TUR','türkiye':'TUR','turkmenistan':'TKM','united arab emirates':'ARE',
@@ -62,10 +62,10 @@ const ISO = {
   'poland':'POL','portugal':'PRT','romania':'ROU','russia':'RUS',
   'russian federation':'RUS','serbia':'SRB','slovakia':'SVK','slovenia':'SVN',
   'spain':'ESP','sweden':'SWE','switzerland':'CHE','ukraine':'UKR',
-  'united kingdom':'GBR','united kingdom of great britain and northern ireland':'GBR',
+  'kosovo':'XKX','united kingdom':'GBR','united kingdom of great britain and northern ireland':'GBR',
 
   // Americas
-  'argentina':'ARG','bahamas':'BHS','barbados':'BRB','belize':'BLZ','bolivia':'BOL',
+  'argentina':'ARG','puerto rico':'PRI','french guiana':'GUF','martinique':'MTQ','guadeloupe':'GLP','bahamas':'BHS','barbados':'BRB','belize':'BLZ','bolivia':'BOL',
   'bolivia (plurinational state of)':'BOL','brazil':'BRA','canada':'CAN','chile':'CHL',
   'colombia':'COL','costa rica':'CRI','cuba':'CUB','dominican republic':'DOM',
   'ecuador':'ECU','el salvador':'SLV','guatemala':'GTM','guyana':'GUY','haiti':'HTI',
@@ -167,6 +167,47 @@ function splitTitle(title){
 }
 
 /* ---------------------------------------------------------------------------
+   3b. RESCUING THE "GLOBAL" AND "MULTI-COUNTRY" BULLETINS
+
+   Some of WHO's most valuable bulletins are titled "Dengue - Global situation"
+   or "Cholera - Multi-country". There's no single country in the title, so the
+   normal path throws them away — but the TEXT lists dozens of countries.
+
+   This reads the text and finds every country mentioned.
+
+   Longest names are matched first and then blanked out, so "Papua New Guinea"
+   is consumed before plain "Guinea" can grab it, and word boundaries stop
+   "Mali" matching inside "Somalia" or "Oman" inside "Romania".
+   --------------------------------------------------------------------------- */
+
+const SCAN_NAMES = Object.keys(ISO)
+  .filter(n => n.length >= 4)
+  .sort((a,b) => b.length - a.length);
+
+function normalise(s){
+  return String(s).toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[\u2018\u2019]/g,"'");
+}
+
+function scanForCountries(text){
+  let hay = ' ' + normalise(text) + ' ';
+  const found = new Set();
+  for(const name of SCAN_NAMES){
+    const safe = normalise(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp('\\b' + safe + '\\b', 'ig');
+    if(re.test(hay)){
+      found.add(ISO[name]);
+      hay = hay.replace(re, ' ');   // consume it so shorter names can't re-match
+    }
+  }
+  return [...found];
+}
+
+/* Titles that mean "this is about many countries, read the body" */
+const IS_MULTI = /global|multi-country|region|regional|afro|amro|searo|euro|wpro|emro/i;
+
+/* ---------------------------------------------------------------------------
    4. SOURCE: WHO DISEASE OUTBREAK NEWS
    The only agency source that is already a proper JSON API.
    --------------------------------------------------------------------------- */
@@ -179,7 +220,7 @@ async function fetchWHO(){
     headers: {
       'accept': 'application/json',
       // Identify yourself. It is polite and it stops you looking like a bot.
-      'user-agent': 'PandemicTracker/1.0 (student project; contact: srikar.kay@gmail.com)'
+      'user-agent': 'PandemicTracker/1.0 (student project; contact: YOUR_EMAIL_HERE)'
     }
   });
   if(!r.ok) throw new Error('WHO returned ' + r.status);
@@ -189,30 +230,22 @@ async function fetchWHO(){
 
   const countries = {};
   const skipped = [];
+  let rescued = 0;
 
-  for(const item of items){
-    const title = item.Title || '';
-    const split = splitTitle(title);
-    if(!split) continue;
-
-    const iso = toISO(split.country);
-    if(!iso){ skipped.push(split.country); continue; }
-
-    const text   = (item.Summary || '') + ' ' + title;
-    const cases  = findCases(text);
-    const deaths = findDeaths(text);
-    const date   = String(item.PublicationDateAndTime || item.PublicationDate || '').slice(0,10);
-
+  /* small helper so both paths write records the same way */
+  function record(iso, disease, cases, deaths, date, item, viaText){
     const entry = {
-      name: split.disease,
-      cases,
-      deaths,
-      cfr: (cases && deaths && cases > 20) ? +(deaths/cases*100).toFixed(1) : null,
+      name: disease,
+      cases: viaText ? null : cases,      // a shared total isn't this country's total
+      deaths: viaText ? null : deaths,
+      cfr: (!viaText && cases && deaths && cases > 20) ? +(deaths/cases*100).toFixed(1) : null,
       per100k: null,
       growth7d: null,
-      severity: severityFor(split.disease, cases, deaths),
+      severity: severityFor(disease, viaText ? null : cases, viaText ? null : deaths),
       asOf: date || null,
-      source: 'WHO Disease Outbreak News',
+      source: viaText
+        ? 'WHO Disease Outbreak News (named in a multi-country bulletin)'
+        : 'WHO Disease Outbreak News',
       url: item.ItemDefaultUrl
         ? 'https://www.who.int' + item.ItemDefaultUrl
         : 'https://www.who.int/emergencies/disease-outbreak-news',
@@ -220,16 +253,368 @@ async function fetchWHO(){
     };
 
     if(!countries[iso]) countries[iso] = { conf:'medium', diseases:[] };
+    const at = countries[iso].diseases.findIndex(d => d.name === entry.name);
+    if(at === -1){ countries[iso].diseases.push(entry); return; }
 
-    // keep only the newest bulletin per disease per country
-    const existing = countries[iso].diseases.findIndex(d => d.name === entry.name);
-    if(existing === -1) countries[iso].diseases.push(entry);
-    else if((entry.asOf||'') > (countries[iso].diseases[existing].asOf||'')) {
-      countries[iso].diseases[existing] = entry;
+    const old = countries[iso].diseases[at];
+    // a country-specific bulletin always beats one that merely name-dropped it
+    const betterSource = !viaText && old.source.includes('multi-country');
+    if(betterSource || (entry.asOf||'') > (old.asOf||'')) countries[iso].diseases[at] = entry;
+  }
+
+  for(const item of items){
+    const title = item.Title || '';
+    const split = splitTitle(title);
+    if(!split) continue;
+
+    const text   = (item.Summary || '') + ' ' + title;
+    const cases  = findCases(text);
+    const deaths = findDeaths(text);
+    const date   = String(item.PublicationDateAndTime || item.PublicationDate || '').slice(0,10);
+
+    const iso = toISO(split.country);
+
+    if(iso){
+      record(iso, split.disease, cases, deaths, date, item, false);
+      continue;
+    }
+
+    // No single country matched. Read the body and find every country named.
+    // This catches "Dengue - Global situation" and also odd titles like
+    // "Chikungunya - La Reunion and Mayotte" that name two places at once.
+    const hits = scanForCountries(text);
+    if(hits.length){
+      hits.forEach(h => record(h, split.disease, null, null, date, item, true));
+      rescued += hits.length;
+    } else {
+      skipped.push(split.country);
     }
   }
 
-  return { countries, skipped, count: items.length };
+  return { countries, skipped, rescued, count: items.length };
+}
+
+/* ---------------------------------------------------------------------------
+   4b. SOURCE: ECDC ERVISS  (fills Europe)
+
+   Plain CSV files sitting in a GitHub repository. No tricks, no hidden URLs.
+   Influenza-like-illness consultation rates for ~23 European countries.
+
+   ⚠ HEADS UP, checked 27 July 2026:
+   ECDC's own README says GitHub downloads are PAUSED while they migrate from
+   TESSy to EpiPulse. The website erviss.org resumed on 26 June 2026, but these
+   CSV files have not been updated since 22 May 2026, so the newest week in
+   them is 2026-W20.
+
+   Rather than delete this adapter, it checks how old the data is and switches
+   itself OFF if it's too stale. When ECDC starts committing again it turns
+   itself back on with no code change from you.
+
+   Check the current status here:
+   https://github.com/EU-ECDC/Respiratory_viruses_weekly_data
+   --------------------------------------------------------------------------- */
+
+const ERVISS_URL =
+  'https://raw.githubusercontent.com/EU-ECDC/Respiratory_viruses_weekly_data/main/data/ILIARIRates.csv';
+
+/* You asked for Europe on the map even though ECDC's GitHub feed is frozen.
+   Set to true, so the data is published — but every figure now carries its
+   week on the globe ("2026-W20", shown as "2mo ago" in red), so nobody can
+   mistake it for this week's numbers.
+
+   Flip to false if you'd rather Europe stayed grey until ECDC resumes. */
+const ERVISS_SHOW_STALE  = true;
+const STALE_AFTER_WEEKS  = 6;
+
+/* "2026-W20" -> how many weeks ago that week ended */
+function weeksOld(yearweek){
+  const m = /^(\d{4})-W(\d{1,2})$/.exec(String(yearweek));
+  if(!m) return null;
+  const year = +m[1], week = +m[2];
+  const jan4 = new Date(Date.UTC(year, 0, 4));           // ISO week 1 holds Jan 4
+  const mondayOffset = (jan4.getUTCDay() + 6) % 7;       // Monday = 0
+  const week1Monday = jan4.getTime() - mondayOffset * 86400000;
+  const weekEnd = week1Monday + (week * 7 - 1) * 86400000;
+  return Math.floor((Date.now() - weekEnd) / (7 * 86400000));
+}
+
+function parseCSV(text){
+  const lines = text.trim().split('\n');
+  const head  = lines[0].split(',').map(h => h.trim());
+  return lines.slice(1).map(line => {
+    const cells = line.split(',');
+    const row = {};
+    head.forEach((h,i) => row[h] = (cells[i] || '').trim());
+    return row;
+  });
+}
+
+/* ILI consultation rate per 100,000. Roughly: under 200 is a quiet week,
+   1000+ is a real wave. Tune these if the colours look wrong to you. */
+function fluSeverity(rate){
+  if(rate == null) return null;
+  if(rate < 100)  return 8;
+  if(rate < 300)  return 18;
+  if(rate < 800)  return 30;
+  if(rate < 2000) return 45;
+  return 60;
+}
+
+async function fetchERVISS(){
+  const r = await fetch(ERVISS_URL);
+  if(!r.ok) throw new Error('ERVISS returned ' + r.status);
+  const rows = parseCSV(await r.text());
+
+  const weeks = [...new Set(rows.map(x => x.yearweek))].sort();
+  const latest = weeks[weeks.length - 1];
+  const age = weeksOld(latest);
+
+  // ECDC has paused GitHub updates. Don't publish months-old numbers as if
+  // they were current — sit this source out until it starts moving again.
+  const isStale = age != null && age > STALE_AFTER_WEEKS;
+  if(isStale && !ERVISS_SHOW_STALE){
+    return { countries:{}, latest, age, matched:0, stale:true, published:false };
+  }
+
+  const window = new Set(weeks.slice(-4));
+
+  const best = {};   // iso -> { rate, week, indicator }
+
+  for(const row of rows){
+    if(!window.has(row.yearweek)) continue;
+    if(row.age !== 'total') continue;
+    if(row.countryname === 'EU/EEA') continue;      // that's an aggregate, not a country
+
+    // prefer influenza-like illness; fall back to acute respiratory infection
+    // for the countries that only report ARI
+    const ili = row.indicator === 'ILIconsultationrate';
+    const ari = row.indicator === 'ARIconsultationrate';
+    if(!ili && !ari) continue;
+
+    const iso = toISO(row.countryname);
+    if(!iso) continue;
+
+    const value = parseFloat(row.value);
+    if(!Number.isFinite(value)) continue;
+
+    const prev = best[iso];
+    const beatsIt =
+      !prev ||
+      (ili && prev.indicator === 'ARI') ||               // ILI always wins over ARI
+      (row.yearweek > prev.week && ili === (prev.indicator === 'ILI'));
+
+    if(beatsIt) best[iso] = { rate:value, week:row.yearweek, indicator: ili ? 'ILI' : 'ARI' };
+  }
+
+  const countries = {};
+  for(const [iso, v] of Object.entries(best)){
+    countries[iso] = { conf:'high', diseases:[{
+      name: v.indicator === 'ILI' ? 'Influenza-like illness' : 'Acute respiratory infection',
+      cases:null, deaths:null, cfr:null,
+      per100k: Math.round(v.rate),
+      growth7d:null,
+      severity: fluSeverity(v.rate),
+      asOf: v.week,                          // e.g. "2026-W20"
+      source:'ECDC ERVISS weekly respiratory surveillance',
+      url:'https://erviss.org/',
+      provisional:false
+    }]};
+  }
+
+  return { countries, latest, age, matched:Object.keys(countries).length,
+           stale:isStale, published:true };
+}
+
+/* ---------------------------------------------------------------------------
+   4c. SOURCE: WHO FluNet  (fills the whole world)
+
+   Endpoint taken straight from WHO's own download link on
+   https://www.who.int/tools/flunet — this is the real one:
+
+     https://xmart-api-public.who.int/FLUMART/VIW_FNT?$format=csv
+
+   Data dictionary (the exact column list) is here, worth opening once:
+
+     https://xmart-api-public.who.int/FLUMART/VIW_FLU_METADATA?$format=csv
+
+   ~190 countries reporting weekly to WHO's Global Influenza Surveillance and
+   Response System. This is the single biggest coverage jump available.
+
+   IMPORTANT: the full table goes back to 1995 and is enormous. Always filter
+   by year. Never fetch it unfiltered.
+
+   Because column names couldn't be verified before shipping, this adapter
+   sniffs for them instead of assuming. It tries several likely names for each
+   field and reports in _notes which ones it actually found. If it can't work
+   the file out, it says so rather than failing silently.
+   --------------------------------------------------------------------------- */
+
+const FLUNET_BASE = 'https://xmart-api-public.who.int/FLUMART/VIW_FNT';
+
+/* Proper CSV parsing — handles quoted fields containing commas, which
+   country names like "Bolivia, Plurinational State of" will have. */
+function parseCSVSafe(text){
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+
+  for(let i = 0; i < text.length; i++){
+    const c = text[i];
+    if(inQuotes){
+      if(c === '"'){
+        if(text[i+1] === '"'){ field += '"'; i++; }
+        else inQuotes = false;
+      } else field += c;
+    } else if(c === '"'){ inQuotes = true; }
+    else if(c === ','){ row.push(field); field = ''; }
+    else if(c === '\n'){ row.push(field); rows.push(row); row = []; field = ''; }
+    else if(c !== '\r'){ field += c; }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  if(!rows.length) return [];
+
+  const head = rows[0].map(h => h.trim());
+  return rows.slice(1)
+    .filter(r => r.length >= head.length - 1)
+    .map(r => {
+      const o = {};
+      head.forEach((h,i) => o[h] = (r[i] ?? '').trim());
+      return o;
+    });
+}
+
+/* Find a column whose name matches one of several candidates, ignoring case
+   and underscores. Returns the real column name, or null. */
+function findColumn(row, candidates){
+  const keys = Object.keys(row);
+  const flat = k => k.toLowerCase().replace(/[^a-z0-9]/g,'');
+  for(const want of candidates){
+    const w = flat(want);
+    const hit = keys.find(k => flat(k) === w);
+    if(hit) return hit;
+  }
+  for(const want of candidates){            // looser: contains
+    const w = flat(want);
+    const hit = keys.find(k => flat(k).includes(w));
+    if(hit) return hit;
+  }
+  return null;
+}
+
+/* Influenza positivity is the standard measure of how active a season is.
+   Under 5% is off-season; above 30% is an intense wave. */
+function fluPositivitySeverity(pct){
+  if(pct == null) return null;
+  if(pct < 5)  return 8;
+  if(pct < 15) return 20;
+  if(pct < 30) return 34;
+  if(pct < 50) return 48;
+  return 58;
+}
+
+async function fetchFluNet(){
+  const year = new Date().getUTCFullYear();
+
+  // Try progressively looser queries. xMart supports OData, but not every
+  // table supports every operator, so fall back rather than give up.
+  const attempts = [
+    `${FLUNET_BASE}?$format=csv&$filter=ISO_YEAR%20eq%20${year}`,
+    `${FLUNET_BASE}?$format=csv&$filter=ISO_YEAR%20ge%20${year - 1}`,
+    `${FLUNET_BASE}?$format=csv&$filter=MMWR_YEAR%20eq%20${year}`,
+    `${FLUNET_BASE}?$format=csv&$top=40000&$orderby=ISO_WEEKSTARTDATE%20desc`
+  ];
+
+  let rows = null, usedUrl = null, lastErr = null;
+  for(const url of attempts){
+    try{
+      const r = await fetch(url, {
+        headers:{ 'user-agent':'PandemicTracker/1.0 (student project; contact: YOUR_EMAIL_HERE)' }
+      });
+      if(!r.ok){ lastErr = 'HTTP ' + r.status; continue; }
+      const text = await r.text();
+      if(text.trim().startsWith('{') || text.trim().startsWith('<')){ lastErr = 'not CSV'; continue; }
+      const parsed = parseCSVSafe(text);
+      if(parsed.length){ rows = parsed; usedUrl = url; break; }
+      lastErr = 'no rows';
+    }catch(e){ lastErr = e.message; }
+  }
+  if(!rows) throw new Error('all query attempts failed (' + lastErr + ')');
+
+  // Work out what the columns are actually called
+  const sample = rows[0];
+  const col = {
+    iso:    findColumn(sample, ['COUNTRY_CODE','ISO3','COUNTRY_AREA_TERRITORY_CODE','CODE']),
+    name:   findColumn(sample, ['COUNTRY_AREA_TERRITORY','COUNTRY','COUNTRYAREATERRITORY']),
+    year:   findColumn(sample, ['ISO_YEAR','MMWR_YEAR','YEAR']),
+    week:   findColumn(sample, ['ISO_WEEK','MMWR_WEEK','WEEK']),
+    posAll: findColumn(sample, ['INF_ALL','INF_ALL_TOTAL','INFALL']),
+    specs:  findColumn(sample, ['SPEC_PROCESSED_NB','SPEC_RECEIVED_NB','SPECPROCESSED'])
+  };
+
+  if(!(col.iso || col.name) || !col.week || !col.posAll){
+    throw new Error('columns not recognised. Saw: ' + Object.keys(sample).slice(0,25).join(', '));
+  }
+
+  // Group by country, keep the two most recent weeks so we can measure a trend
+  const byCountry = {};
+  for(const row of rows){
+    const iso = (col.iso && /^[A-Z]{3}$/.test(row[col.iso])) ? row[col.iso] : toISO(row[col.name]);
+    if(!iso) continue;
+
+    const y = parseInt(row[col.year], 10) || year;
+    const w = parseInt(row[col.week], 10);
+    if(!Number.isFinite(w)) continue;
+
+    const pos   = parseFloat(row[col.posAll]);
+    const specs = col.specs ? parseFloat(row[col.specs]) : NaN;
+    if(!Number.isFinite(pos)) continue;
+
+    const stamp = y * 100 + w;
+    (byCountry[iso] ||= []).push({ stamp, y, w, pos, specs: Number.isFinite(specs) ? specs : null });
+  }
+
+  const countries = {};
+  let newestStamp = 0;
+
+  for(const [iso, list] of Object.entries(byCountry)){
+    list.sort((a,b) => b.stamp - a.stamp);
+    const now  = list[0];
+    const prev = list[1];
+    if(now.stamp > newestStamp) newestStamp = now.stamp;
+
+    const positivity = (now.specs && now.specs > 0)
+      ? +(now.pos / now.specs * 100).toFixed(1)
+      : null;
+
+    // week-on-week change in detections — this is what drives the white
+    // "fast growth" outline on the globe
+    let growth = null;
+    if(prev && prev.pos > 5) growth = Math.round((now.pos - prev.pos) / prev.pos * 100);
+
+    countries[iso] = { conf:'high', diseases:[{
+      name:'Influenza',
+      cases: Math.round(now.pos),
+      deaths: null,
+      cfr: null,
+      per100k: null,
+      growth7d: growth,
+      severity: fluPositivitySeverity(positivity) ?? (now.pos > 100 ? 25 : 10),
+      asOf: `${now.y}-W${String(now.w).padStart(2,'0')}`,
+      source: positivity != null
+        ? `WHO FluNet (GISRS) — ${positivity}% of specimens positive`
+        : 'WHO FluNet (GISRS)',
+      url:'https://www.who.int/tools/flunet',
+      provisional:false
+    }]};
+  }
+
+  const nw = String(newestStamp);
+  return {
+    countries,
+    matched: Object.keys(countries).length,
+    newestWeek: newestStamp ? `${nw.slice(0,4)}-W${nw.slice(4)}` : 'unknown',
+    columns: col,
+    usedUrl
+  };
 }
 
 /* ---------------------------------------------------------------------------
@@ -290,12 +675,47 @@ export default async function handler(req, res){
   try{
     const who = await fetchWHO();
     countries = who.countries;
-    notes.push(`WHO: read ${who.count} bulletins, matched ${Object.keys(who.countries).length} countries`);
+    notes.push(`WHO: read ${who.count} bulletins, matched ${Object.keys(who.countries).length} countries (${who.rescued} from multi-country bulletins)`);
     if(who.skipped.length){
-      notes.push(`Skipped (add to the ISO map): ${[...new Set(who.skipped)].join(', ')}`);
+      notes.push(`Not a single country, ignored: ${[...new Set(who.skipped)].join(', ')}`);
     }
   }catch(err){
     notes.push('WHO fetch failed: ' + err.message);
+  }
+
+  try{
+    const eu = await fetchERVISS();
+    for(const [iso, rec] of Object.entries(eu.countries)){
+      if(!countries[iso]) countries[iso] = { conf:'high', diseases:[] };
+      countries[iso].diseases.push(...rec.diseases);
+    }
+    if(!eu.published){
+      notes.push(`ERVISS: HIDDEN — newest week ${eu.latest} is about ${eu.age} weeks old. `
+        + `Set ERVISS_SHOW_STALE = true to publish it anyway.`);
+    } else if(eu.stale){
+      notes.push(`ERVISS: matched ${eu.matched} European countries, but newest week is ${eu.latest} `
+        + `(~${eu.age} weeks old). ECDC paused GitHub updates during their EpiPulse migration; `
+        + `the globe labels every one of these figures with its age. `
+        + `Check https://github.com/EU-ECDC/Respiratory_viruses_weekly_data for a resume.`);
+    } else {
+      notes.push(`ERVISS: matched ${eu.matched} European countries, newest week ${eu.latest} (${eu.age} weeks old)`);
+    }
+  }catch(err){
+    notes.push('ERVISS fetch failed: ' + err.message);
+  }
+
+  try{
+    const flu = await fetchFluNet();
+    for(const [iso, rec] of Object.entries(flu.countries)){
+      if(!countries[iso]) countries[iso] = { conf:'high', diseases:[] };
+      countries[iso].diseases.push(...rec.diseases);
+    }
+    notes.push(`FluNet: matched ${flu.matched} countries, newest week ${flu.newestWeek}`);
+    notes.push(`FluNet columns detected: ${JSON.stringify(flu.columns)}`);
+  }catch(err){
+    notes.push('FluNet fetch failed: ' + err.message
+      + ' | test it yourself: https://xmart-api-public.who.int/FLUMART/VIW_FNT?$format=csv&$top=5'
+      + ' | column list: https://xmart-api-public.who.int/FLUMART/VIW_FLU_METADATA?$format=csv');
   }
 
   // merge the baseline in without overwriting anything live

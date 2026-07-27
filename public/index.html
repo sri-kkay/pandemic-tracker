@@ -138,6 +138,30 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 }
 .chip:hover{border-color:var(--ink-dim);color:var(--ink)}
 
+.fresh{
+  display:inline-flex;align-items:center;gap:5px;font-family:var(--font-num);
+  font-size:9px;letter-spacing:.09em;text-transform:uppercase;
+  padding:3px 6px;border:1px solid;border-radius:2px;white-space:nowrap;
+}
+.freshdot{width:5px;height:5px;border-radius:50%;flex:none}
+.fitem .fresh{font-size:8.5px;padding:2px 5px}
+.srcline{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  margin-top:8px;padding-top:8px;border-top:1px solid rgba(29,38,50,.8);
+}
+.updrow{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+#feedsort{display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid var(--hairline)}
+#feedsort button{
+  flex:1;font-family:var(--font-num);font-size:8.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-dim);padding:5px 4px;
+  border:1px solid var(--hairline);border-radius:2px;
+}
+#feedsort button.on{color:var(--ink);border-color:var(--ink-dim);background:rgba(255,255,255,.04)}
+.flevel{
+  font-family:var(--font-num);font-size:8px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-dim);border:1px solid var(--hairline);padding:1px 4px;border-radius:2px;
+}
+
 /* ---------- tooltip ---------- */
 #tip{
   position:absolute;pointer-events:none;z-index:40;opacity:0;transition:opacity .1s;
@@ -203,11 +227,18 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
     <span class="eyebrow">Latest outbreaks</span>
     <button class="collapse" data-t="feed">−</button>
   </div>
+  <div id="feedhead" style="padding:7px 12px;border-bottom:1px solid var(--hairline);font-family:var(--font-num);font-size:9.5px;color:var(--ink-mute);letter-spacing:.05em">
+  </div>
   <div class="pbody" style="display:flex;flex-direction:column;min-height:0">
     <div id="feedfilter">
       <span class="eyebrow">Min severity</span>
       <input type="range" id="thr" min="0" max="100" value="0" step="5">
       <span id="thrval">0</span>
+    </div>
+    <div id="feedsort">
+      <button class="on" data-sort="recent">Newest</button>
+      <button data-sort="severity">Worst</button>
+      <button data-sort="stale">Most stale</button>
     </div>
     <div id="feedlist"></div>
   </div>
@@ -514,7 +545,7 @@ const S = {
   byISO:new Map(), continents:new Map(),
   view:{level:'world', continent:null, iso:null, region:null, city:null},
   lod:'world',          // world | region | city
-  hover:null, threshold:0, tab:'treatments',
+  hover:null, threshold:0, tab:'treatments', sort:'recent',
   entities:new Map()    // resolved severity per key
 };
 
@@ -601,7 +632,7 @@ function worstConf(isos){
    The globe is a sphere wearing a canvas. Repainting the canvas recolours
    the world; we only repaint when the zoom tier changes or data arrives. */
 
-const TEX_W = 4096, TEX_H = 2048;
+let TEX_W = 4096, TEX_H = 2048;
 const tex = document.createElement('canvas');
 tex.width = TEX_W; tex.height = TEX_H;
 const tx = tex.getContext('2d');
@@ -663,7 +694,9 @@ function paint(){
 
   if(!S.countries) { commitTexture(); return; }
 
-  // ── countries
+  // ── countries: fills only. Borders are drawn as vector lines (§6b) so they
+  // stay crisp when you zoom. A soft glow stays in the texture because a glow
+  // is supposed to be blurry.
   S.countries.features.forEach(f=>{
     const iso = isoOf(f);
     const e = S.entities.get(iso);
@@ -671,29 +704,31 @@ function paint(){
     traceFeature(tx, f.geometry);
     tx.fillStyle = fillFor(e?.sev ?? null, maxPer100k(rec));
     tx.fill('evenodd');
-    // hairline borders
-    tx.strokeStyle = 'rgba(160,185,215,.16)'; tx.lineWidth = 1.4; tx.stroke();
-    // white edge = fast growth hotspot, visible even when the fill is pale
+
     const g = maxGrowth(rec);
     if(g != null && g >= 15){
-      tx.strokeStyle = 'rgba(255,255,255,.85)'; tx.lineWidth = 4; tx.stroke();
+      tx.save();
+      tx.strokeStyle = 'rgba(255,255,255,.30)';
+      tx.lineWidth = 14;
+      tx.filter = 'blur(6px)';
+      tx.stroke();
+      tx.restore();
     }
   });
 
-  // ── admin-1, only in the closer tiers
+  // ── admin-1 fills, only in the closer tiers
   if(S.lod !== 'world' && S.admin1){
     const focusISO = S.view.iso;
     S.admin1.features.forEach(f=>{
       const p = f.properties, iso = p.adm0_a3 || p.iso_a2;
-      if(focusISO && iso !== focusISO) return;      // draw only the focused country
+      if(focusISO && iso !== focusISO) return;
       const key = iso + ':' + (p.name || '');
       const e = S.entities.get(key);
-      traceFeature(tx, f.geometry);
       if(e && e.sev != null){
+        traceFeature(tx, f.geometry);
         tx.fillStyle = fillFor(e.sev, maxPer100k(e.rec));
         tx.fill('evenodd');
       }
-      tx.strokeStyle = 'rgba(190,210,235,.34)'; tx.lineWidth = 1.6; tx.stroke();
     });
   }
 
@@ -710,6 +745,82 @@ function isoOf(f){
 }
 function nameOf(f){ const p=f.properties; return p.ADMIN || p.admin || p.NAME || p.name || 'Unknown'; }
 function contOf(f){ const p=f.properties; return p.CONTINENT || p.continent || 'Unknown'; }
+
+/* ── 6b. CRISP BORDERS ────────────────────────────────────────────────────
+   Borders used to be painted into the texture, which meant that zooming in
+   magnified the pixels and everything went soft. Now they're real 3D line
+   geometry sitting just above the sphere's surface, so the GPU redraws them
+   at whatever resolution your screen actually is. They stay sharp at every
+   zoom level.
+
+   Bonus: lines drawn on a sphere handle the date line correctly for free.
+   A segment from 179°E to 179°W is two points that are genuinely next to
+   each other in 3D, so there's no smear across the map. */
+
+let borderLines = null, admin1Lines = null, hotspotLines = null;
+
+function buildLines(features, colour, opacity, radius, filter){
+  const pts = [];
+  for(const f of features){
+    if(filter && !filter(f)) continue;
+    const polys = f.geometry.type === 'Polygon'
+      ? [f.geometry.coordinates]
+      : f.geometry.coordinates;
+    for(const poly of polys){
+      for(const ring of poly){
+        for(let i = 0; i < ring.length - 1; i++){
+          const a = latLonToVec(ring[i][1],   ring[i][0],   radius);
+          const b = latLonToVec(ring[i+1][1], ring[i+1][0], radius);
+          pts.push(a.x, a.y, a.z, b.x, b.y, b.z);
+        }
+      }
+    }
+  }
+  if(!pts.length) return null;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  return new THREE.LineSegments(g, new THREE.LineBasicMaterial({
+    color: colour, transparent:true, opacity, depthWrite:false
+  }));
+}
+
+function disposeLine(obj){
+  if(!obj) return;
+  spin.remove(obj);
+  obj.geometry.dispose();
+  obj.material.dispose();
+}
+
+function rebuildBorders(){
+  if(!S.countries) return;
+
+  // country outlines — always on
+  if(!borderLines){
+    borderLines = buildLines(S.countries.features, 0xA8C0DC, 0.42, R*1.0015);
+    if(borderLines) spin.add(borderLines);
+  }
+
+  // fast-growth hotspots get a bright outline, drawn on top
+  disposeLine(hotspotLines); hotspotLines = null;
+  const hot = S.countries.features.filter(f=>{
+    const g = maxGrowth(SEED.countries[isoOf(f)]);
+    return g != null && g >= 15;
+  });
+  if(hot.length){
+    hotspotLines = buildLines(hot, 0xFFFFFF, 0.92, R*1.0035);
+    if(hotspotLines) spin.add(hotspotLines);
+  }
+
+  // state / province lines — only for the country you're looking at
+  disposeLine(admin1Lines); admin1Lines = null;
+  if(S.lod !== 'world' && S.admin1 && S.view.iso){
+    admin1Lines = buildLines(
+      S.admin1.features, 0xBFD4EA, 0.5, R*1.0025,
+      f => (f.properties.adm0_a3 || f.properties.iso_a2) === S.view.iso
+    );
+    if(admin1Lines) spin.add(admin1Lines);
+  }
+}
 
 /* ── 7. THREE.JS SCENE ────────────────────────────────────────────────── */
 
@@ -731,9 +842,19 @@ function initScene(){
   spin = new THREE.Group();            // rotates on Y  →  world = Rx · Ry · p
   tilt.add(spin); scene.add(tilt);
 
+  // Use a bigger texture when the GPU can take it. Mobile stays at 4096.
+  const maxT = renderer.capabilities.maxTextureSize || 4096;
+  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+  if(maxT >= 8192 && !isMobile){
+    TEX_W = 8192; TEX_H = 4096;
+    tex.width = TEX_W; tex.height = TEX_H;
+  }
+
   texture = new THREE.CanvasTexture(tex);
   texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
   texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
 
   const geo = new THREE.SphereGeometry(R, 96, 64);
   globe = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({map:texture}));
@@ -992,7 +1113,7 @@ function ensureAdmin1(){
   if(S.admin1 || S._a1loading) return;
   S._a1loading = true;
   fetchFirst(GEO.admin1)
-    .then(j=>{ S.admin1 = j; paint(); })
+    .then(j=>{ S.admin1 = j; paint(); rebuildBorders(); })
     .catch(()=>{ note('Subnational boundaries unavailable — country tier only.'); })
     .finally(()=>{ S._a1loading = false; });
 }
@@ -1035,13 +1156,84 @@ function showTip(e, name, rec, sev){
     const n = d.cases!=null ? fmt(d.cases)+' cases' : 'no count';
     return `<div class="td"><span>${esc(d.name)}</span><span>${n} ${trendArrow(d.growth7d)}</span></div>`;
   }).join('') || `<div class="td"><span>No reported activity</span><span>—</span></div>`;
+  const fresh = freshness(freshestAsOf(dis));
   tip.innerHTML = `<div class="tn">${esc(name)}</div>${rows}
-    <div class="tt" style="color:${t.hex}"><span style="width:6px;height:6px;border-radius:50%;background:${t.hex};display:block"></span>${t.name}${sev!=null?' · '+sev:''}</div>`;
+    <div class="tt" style="color:${t.hex}">
+      <span style="width:6px;height:6px;border-radius:50%;background:${t.hex};display:block"></span>${t.name}${sev!=null?' · '+sev:''}
+      <span style="margin-left:auto;color:${fresh.hex}">${fresh.label}</span>
+    </div>`;
   tip.style.left = e.clientX+'px'; tip.style.top = e.clientY+'px'; tip.style.opacity = 1;
 }
 function hideTip(){ tip.style.opacity = 0; }
 
-/* ── 12. UI RENDER ────────────────────────────────────────────────────── */
+/* ── 12. FRESHNESS ────────────────────────────────────────────────────────
+   Every number on this map is only as good as its date. Sources report at
+   wildly different speeds — WHO posts a bulletin the week it happens, ECDC
+   reports by ISO week, some national agencies run a month behind. So every
+   figure carries its own age, shown everywhere it appears.
+
+   Handles both "2026-07-15" and ISO week strings like "2026-W20". */
+
+function parseAsOf(s){
+  if(!s) return null;
+  const wk = /^(\d{4})-W(\d{1,2})$/.exec(String(s));
+  if(wk){
+    const year = +wk[1], week = +wk[2];
+    const jan4 = new Date(Date.UTC(year, 0, 4));
+    const mondayOffset = (jan4.getUTCDay() + 6) % 7;
+    const week1Monday = jan4.getTime() - mondayOffset * 86400000;
+    return new Date(week1Monday + (week * 7 - 1) * 86400000);  // end of that week
+  }
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+
+function ageDays(asOf){
+  const d = parseAsOf(asOf);
+  if(!d) return null;
+  return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86400000));
+}
+
+/* Four bands. The thresholds match how often the sources actually publish:
+   a weekly source is doing its job at 7 days, badly behind at 30. */
+function freshness(asOf){
+  const d = ageDays(asOf);
+  if(d == null) return { label:'no date', short:'—', hex:'#4E5967', rank:4 };
+  if(d <= 8)    return { label:ago(d), short:ago(d), hex:'#16A34A', rank:0 };
+  if(d <= 30)   return { label:ago(d), short:ago(d), hex:'#CA8A04', rank:1 };
+  if(d <= 90)   return { label:ago(d), short:ago(d), hex:'#EA580C', rank:2 };
+  return          { label:ago(d), short:ago(d), hex:'#DC2626', rank:3 };
+}
+
+function ago(d){
+  if(d === 0) return 'today';
+  if(d === 1) return 'yesterday';
+  if(d < 14)  return d + 'd ago';
+  if(d < 70)  return Math.round(d/7) + 'w ago';
+  return Math.round(d/30) + 'mo ago';
+}
+
+/* The freshest figure anywhere in a record — what the headline badge shows. */
+function freshestAsOf(diseases){
+  const dated = (diseases||[]).map(d=>d.asOf).filter(Boolean);
+  if(!dated.length) return null;
+  return dated.sort((a,b)=>(ageDays(a)??99999)-(ageDays(b)??99999))[0];
+}
+
+function bestFreshness(rec){
+  if(!rec || !rec.diseases || !rec.diseases.length) return freshness(null);
+  return rec.diseases
+    .map(d => freshness(d.asOf))
+    .sort((a,b) => a.rank - b.rank)[0];
+}
+
+function freshBadge(asOf, extra){
+  const f = freshness(asOf);
+  return `<span class="fresh" style="color:${f.hex};border-color:${f.hex}44;background:${f.hex}14">
+    <span class="freshdot" style="background:${f.hex}"></span>${f.label}${extra?' · '+extra:''}</span>`;
+}
+
+/* ── 13. UI RENDER ────────────────────────────────────────────────────── */
 
 const $ = s=>document.querySelector(s);
 const fmt = n => n==null ? '—' : n.toLocaleString('en-US');
@@ -1085,8 +1277,14 @@ function renderInfo(){
         <div class="stat"><div class="k">Deaths</div><div class="v">${fmt(d.deaths)}</div></div>
         <div class="stat"><div class="k">CFR</div><div class="v">${d.cfr!=null?d.cfr.toFixed(1)+'%':'—'}</div></div>
       </div>
-      <div class="src">
-        ${d.asOf ? `As of ${esc(d.asOf)} · ` : ''}${esc(d.source||'Source pending')}
+      <div class="srcline">
+        ${freshBadge(d.asOf)}
+        <span style="font-family:var(--font-num);font-size:9.5px;color:var(--ink-dim);letter-spacing:.05em">
+          ${d.asOf ? esc(d.asOf) : 'undated'}
+        </span>
+      </div>
+      <div class="src" style="margin-top:6px">
+        ${esc(d.source||'Source pending')}
         ${d.url ? ` · <a href="${esc(d.url)}" target="_blank" rel="noopener">open source</a>` : ''}
         ${d.provisional ? `<br><span class="prov">Provisional — verify against the primary feed before publishing.</span>` : ''}
       </div>
@@ -1106,7 +1304,10 @@ function renderInfo(){
       </span>
       <div id="idscore" style="color:${t.hex}">${sev==null?'——':sev}</div>
       <div id="idscorelbl">Severity index · 0–100</div>
-      ${conf ? `<div class="conf"><span class="confdot" style="background:${confMap[conf]}"></span>${conf} reporting confidence</div>` : ''}
+      <div class="updrow">
+        ${freshBadge(freshestAsOf(dis), 'newest figure')}
+        ${conf ? `<span class="conf" style="margin:0"><span class="confdot" style="background:${confMap[conf]}"></span>${conf} confidence</span>` : ''}
+      </div>
     </div>${cards}`;
 
   renderDrawer(dis);
@@ -1131,27 +1332,87 @@ function renderDrawer(dis){
 
 function renderFeed(){
   const rows = [];
-  for(const [iso,rec] of Object.entries(SEED.countries)){
-    const sev = entitySeverity(rec);
-    rec.diseases.forEach(d=>{
-      rows.push({iso, name:d.name, sev: diseaseSeverity(d) ?? sev, asOf:d.asOf, cases:d.cases});
+
+  // countries
+  for(const [iso, rec] of Object.entries(SEED.countries || {})){
+    const cf = S.countries?.features.find(f => isoOf(f) === iso);
+    const place = cf ? nameOf(cf) : iso;
+    (rec.diseases || []).forEach(d=>{
+      rows.push({ level:'Country', iso, place, region:null,
+        name:d.name, sev:diseaseSeverity(d) ?? entitySeverity(rec),
+        asOf:d.asOf, cases:d.cases, source:d.source });
     });
   }
-  rows.sort((a,b)=> (b.asOf||'').localeCompare(a.asOf||''));
+
+  // states / provinces — "all countries AND states", as asked
+  for(const [key, rec] of Object.entries(SEED.admin1 || {})){
+    const [iso, region] = key.split(':');
+    (rec.diseases || []).forEach(d=>{
+      rows.push({ level:'State', iso, place:region, region,
+        name:d.name, sev:diseaseSeverity(d) ?? entitySeverity(rec),
+        asOf:d.asOf, cases:d.cases, source:d.source });
+    });
+  }
+
+  // cities
+  for(const [key, rec] of Object.entries(SEED.cities || {})){
+    const [iso, city] = key.split(':');
+    (rec.diseases || []).forEach(d=>{
+      rows.push({ level:'City', iso, place:city, region:null,
+        name:d.name, sev:diseaseSeverity(d) ?? entitySeverity(rec),
+        asOf:d.asOf, cases:d.cases, source:d.source });
+    });
+  }
+
+  const sorters = {
+    recent:   (a,b) => (ageDays(a.asOf) ?? 99999) - (ageDays(b.asOf) ?? 99999),
+    severity: (a,b) => (b.sev ?? -1) - (a.sev ?? -1),
+    stale:    (a,b) => (ageDays(b.asOf) ?? -1) - (ageDays(a.asOf) ?? -1)
+  };
+  rows.sort(sorters[S.sort] || sorters.recent);
+
   const vis = rows.filter(r => (r.sev ?? 0) >= S.threshold);
+
+  // headline: how current is this dataset overall?
+  const dated = rows.map(r => ageDays(r.asOf)).filter(v => v != null);
+  const newest = dated.length ? Math.min(...dated) : null;
+  const undated = rows.length - dated.length;
+
+  $('#feedhead').innerHTML = dated.length
+    ? `${rows.length} reports · newest ${ago(newest)}${undated ? ` · ${undated} undated` : ''}`
+    : `${rows.length} reports · no dates available`;
+
   $('#feedlist').innerHTML = vis.length ? vis.map(r=>{
     const t = tierOf(r.sev);
-    const cname = S.countries?.features.find(f=>isoOf(f)===r.iso);
-    return `<div class="fitem" data-iso="${r.iso}">
+    const f = freshness(r.asOf);
+    return `<div class="fitem" data-iso="${esc(r.iso)}" data-region="${esc(r.region||'')}">
       <span class="fdot" style="background:${t.hex}"></span>
-      <div>
-        <div class="ftitle">${esc(r.name)} — ${esc(cname?nameOf(cname):r.iso)}</div>
-        <div class="fmeta">${r.asOf?esc(r.asOf):'undated'} · ${r.cases!=null?fmt(r.cases)+' cases':'no count'} · ${t.name}</div>
+      <div style="min-width:0;flex:1">
+        <div class="ftitle">${esc(r.name)} — ${esc(r.place)}</div>
+        <div class="fmeta" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span class="flevel">${r.level}</span>
+          <span>${r.cases != null ? fmt(r.cases)+' cases' : 'no count'}</span>
+          <span style="color:${t.hex}">${t.name}</span>
+        </div>
+        <div style="margin-top:5px">
+          ${freshBadge(r.asOf)}
+        </div>
       </div></div>`;
   }).join('') : `<div style="padding:16px 12px;color:var(--ink-dim);font-size:12px;line-height:1.5">
       Nothing at or above severity ${S.threshold}. Lower the threshold to see quieter events.</div>`;
+
   $('#feedlist').querySelectorAll('.fitem').forEach(el=>{
-    el.onclick = ()=> selectCountry(el.dataset.iso);
+    el.onclick = ()=>{
+      const iso = el.dataset.iso;
+      const region = el.dataset.region;
+      if(region && S.admin1){
+        const f = S.admin1.features.find(x =>
+          (x.properties.adm0_a3 || x.properties.iso_a2) === iso &&
+          x.properties.name === region);
+        if(f){ selectAdmin1(iso, f); return; }
+      }
+      selectCountry(iso);
+    };
   });
 }
 
@@ -1220,7 +1481,10 @@ function renderLabels(){
 
 function refresh(){
   const lod = currentLOD();
-  if(lod !== lastLOD || S.view.iso !== lastFocus){ lastLOD = lod; lastFocus = S.view.iso; S.lod = lod; paint(); }
+  if(lod !== lastLOD || S.view.iso !== lastFocus){
+    lastLOD = lod; lastFocus = S.view.iso; S.lod = lod;
+    paint(); rebuildBorders();
+  }
   renderCrumbs(); renderInfo(); renderFeed(); renderRamp();
 }
 
@@ -1247,7 +1511,11 @@ function tick(){
   spin.rotation.y = cam.ry;
   camera.position.z = cam.z;
   const lod = currentLOD();
-  if(lod !== lastLOD){ lastLOD = lod; S.lod = lod; paint(); renderCrumbs(); if(lod!=='world') ensureAdmin1(); }
+  if(lod !== lastLOD){
+    lastLOD = lod; S.lod = lod;
+    paint(); rebuildBorders(); renderCrumbs();
+    if(lod !== 'world') ensureAdmin1();
+  }
   spin.updateMatrixWorld();
   const now = performance.now();
   if(now - lastLabelPaint > 50){ lastLabelPaint = now; renderLabels(); }
@@ -1262,6 +1530,12 @@ function bindUI(){
       b.textContent = p.classList.contains('closed') ? '+' : '−'; };
   });
   $('#thr').oninput = e=>{ S.threshold = +e.target.value; $('#thrval').textContent = e.target.value; renderFeed(); };
+  document.querySelectorAll('#feedsort button').forEach(b=>{
+    b.onclick = ()=>{
+      document.querySelectorAll('#feedsort button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on'); S.sort = b.dataset.sort; renderFeed();
+    };
+  });
   document.querySelectorAll('#tabs button').forEach(b=>{
     b.onclick = ()=>{
       document.querySelectorAll('#tabs button').forEach(x=>x.classList.remove('on'));
@@ -1323,6 +1597,7 @@ async function boot(){
 
   progress(88, 'Painting severity');
   paint();
+  rebuildBorders();
   refresh();
 
   progress(100, 'Ready');
