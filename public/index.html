@@ -539,10 +539,12 @@ const SEED = {
 const GEO = {
   countries:['https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson',
              'https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_110m_admin_0_countries.geojson'],
-  admin1:   ['https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_1_states_provinces.geojson',
-             'https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_50m_admin_1_states_provinces.geojson'],
-  cities:   ['https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_populated_places_simple.geojson',
-             'https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_110m_populated_places_simple.geojson']
+  /* Bundled with the project. Natural Earth's worldwide admin-1 file is 38 MB,
+     which is far too heavy for a browser, so it was simplified down to 1.7 MB
+     (3,978 regions across 218 countries) and shipped in public/data/.
+     Cities are the major ones only — capitals, megacities and pop >= 300k. */
+  admin1:   ['data/admin1.json'],
+  cities:   ['data/cities.json']
 };
 
 async function fetchFirst(urls){
@@ -732,20 +734,26 @@ function paint(){
     }
   });
 
-  // ── admin-1 fills, only in the closer tiers
+  // ── state / province fills, wherever we actually have data for them.
+  // Boundaries are worldwide, but only regions with surveillance data get a
+  // fill. Everything else keeps the country colour beneath it.
   if(S.lod !== 'world' && S.admin1){
-    const focusISO = S.view.iso;
-    S.admin1.features.forEach(f=>{
-      const p = f.properties, iso = p.adm0_a3 || p.iso_a2;
-      if(focusISO && iso !== focusISO) return;
-      const key = iso + ':' + (p.name || '');
-      const e = S.entities.get(key);
-      if(e && e.sev != null){
-        traceFeature(tx, f.geometry);
+    for(const [iso, regions] of Object.entries(S.admin1)){
+      for(const [name, rings] of regions){
+        const e = S.entities.get(iso + ':' + name);
+        if(!e || e.sev == null) continue;
+        tx.beginPath();
+        for(const flat of rings){
+          for(let i = 0; i + 1 < flat.length; i += 2){
+            const x = projX(flat[i]), y = projY(flat[i+1]);
+            i ? tx.lineTo(x, y) : tx.moveTo(x, y);
+          }
+          tx.closePath();
+        }
         tx.fillStyle = fillFor(e.sev, maxPer100k(e.rec));
         tx.fill('evenodd');
       }
-    });
+    }
   }
 
   commitTexture();
@@ -762,18 +770,37 @@ function isoOf(f){
 function nameOf(f){ const p=f.properties; return p.ADMIN || p.admin || p.NAME || p.name || 'Unknown'; }
 function contOf(f){ const p=f.properties; return p.CONTINENT || p.continent || 'Unknown'; }
 
-/* ── 6b. CRISP BORDERS ────────────────────────────────────────────────────
-   Borders used to be painted into the texture, which meant that zooming in
-   magnified the pixels and everything went soft. Now they're real 3D line
-   geometry sitting just above the sphere's surface, so the GPU redraws them
-   at whatever resolution your screen actually is. They stay sharp at every
-   zoom level.
+/* ── 6b. CRISP BORDERS + ZOOM-DRIVEN DETAIL ───────────────────────────────
+   Borders are real 3D line geometry sitting just above the sphere, so they
+   stay sharp at any zoom instead of turning into magnified pixels.
 
-   Bonus: lines drawn on a sphere handle the date line correctly for free.
-   A segment from 179°E to 179°W is two points that are genuinely next to
-   each other in 3D, so there's no smear across the map. */
+   Three layers, each fading in as you get closer:
 
-let borderLines = null, admin1Lines = null, hotspotLines = null;
+     always      country outlines
+     z < 2.60    state / province lines   (worldwide, 218 countries)
+     z < 1.95    major city markers       (capitals, megacities, pop >= 300k)
+
+   The state and city layers are built ONCE, the first time you zoom in far
+   enough, then just faded and toggled. Rebuilding them per frame would be
+   far too slow — there are 137,000 line points in the state layer.
+
+   Cities are tiered so the view never turns to soup: capitals and megacities
+   appear first, then million-plus cities, then the rest only at full zoom. */
+
+let borderLines = null, hotspotLines = null, admin1Lines = null, cityPoints = null;
+
+/* fade helper: 1 when z is at or below `lo`, 0 at or above `hi` */
+function fadeIn(z, hi, lo){
+  if(z >= hi) return 0;
+  if(z <= lo) return 1;
+  const t = (hi - z) / (hi - lo);
+  return t * t * (3 - 2 * t);          // smoothstep
+}
+
+const FADE = {
+  admin1: { hi:2.60, lo:2.25 },
+  city:   { hi:1.95, lo:1.70 }
+};
 
 function buildLines(features, colour, opacity, radius, filter){
   const pts = [];
@@ -792,12 +819,56 @@ function buildLines(features, colour, opacity, radius, filter){
       }
     }
   }
+  return finishLine(pts, colour, opacity);
+}
+
+/* The bundled admin1 file uses flat coordinate arrays — [lon,lat,lon,lat,…] —
+   which is roughly half the size of nested pairs. */
+function buildAdmin1Lines(){
+  if(!S.admin1) return null;
+  const pts = [];
+  for(const regions of Object.values(S.admin1)){
+    for(const [, rings] of regions){
+      for(const flat of rings){
+        for(let i = 0; i + 3 < flat.length; i += 2){
+          const a = latLonToVec(flat[i+1], flat[i],   R*1.0025);
+          const b = latLonToVec(flat[i+3], flat[i+2], R*1.0025);
+          pts.push(a.x, a.y, a.z, b.x, b.y, b.z);
+        }
+      }
+    }
+  }
+  return finishLine(pts, 0xBFD4EA, 0);
+}
+
+function finishLine(pts, colour, opacity){
   if(!pts.length) return null;
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-  return new THREE.LineSegments(g, new THREE.LineBasicMaterial({
+  const line = new THREE.LineSegments(g, new THREE.LineBasicMaterial({
     color: colour, transparent:true, opacity, depthWrite:false
   }));
+  line.visible = opacity > 0;
+  return line;
+}
+
+function buildCityPoints(){
+  if(!S.cities) return null;
+  const pos = [], tiers = [];
+  for(const [, lon, lat, tier] of S.cities){
+    const v = latLonToVec(lat, lon, R*1.004);
+    pos.push(v.x, v.y, v.z);
+    tiers.push(tier);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  const p = new THREE.Points(g, new THREE.PointsMaterial({
+    color:0xE8EFF7, size:0.006, sizeAttenuation:true,
+    transparent:true, opacity:0, depthWrite:false
+  }));
+  p.userData.tiers = tiers;
+  p.visible = false;
+  return p;
 }
 
 function disposeLine(obj){
@@ -807,16 +878,15 @@ function disposeLine(obj){
   obj.material.dispose();
 }
 
+/* Country outlines and hotspot flags — cheap, rebuilt whenever data changes */
 function rebuildBorders(){
   if(!S.countries) return;
 
-  // country outlines — always on
   if(!borderLines){
     borderLines = buildLines(S.countries.features, 0xA8C0DC, 0.42, R*1.0015);
     if(borderLines) spin.add(borderLines);
   }
 
-  // fast-growth hotspots get a bright outline, drawn on top
   disposeLine(hotspotLines); hotspotLines = null;
   const hot = S.countries.features.filter(f=>{
     const g = maxGrowth(SEED.countries[isoOf(f)]);
@@ -826,16 +896,35 @@ function rebuildBorders(){
     hotspotLines = buildLines(hot, 0xFFFFFF, 0.92, R*1.0035);
     if(hotspotLines) spin.add(hotspotLines);
   }
+}
 
-  // state / province lines — only for the country you're looking at
-  disposeLine(admin1Lines); admin1Lines = null;
-  if(S.lod !== 'world' && S.admin1 && S.view.iso){
-    admin1Lines = buildLines(
-      S.admin1.features, 0xBFD4EA, 0.5, R*1.0025,
-      f => (f.properties.adm0_a3 || f.properties.iso_a2) === S.view.iso
-    );
+/* Called every frame — cheap, just adjusts opacity on prebuilt geometry */
+function updateDetailLayers(){
+  const a = fadeIn(cam.z, FADE.admin1.hi, FADE.admin1.lo);
+  const c = fadeIn(cam.z, FADE.city.hi,   FADE.city.lo);
+
+  if(a > 0 && !admin1Lines && S.admin1){
+    admin1Lines = buildAdmin1Lines();
     if(admin1Lines) spin.add(admin1Lines);
   }
+  if(admin1Lines){
+    admin1Lines.material.opacity = a * 0.55;
+    admin1Lines.visible = a > 0.01;
+  }
+
+  if(c > 0 && !cityPoints && S.cities){
+    cityPoints = buildCityPoints();
+    if(cityPoints) spin.add(cityPoints);
+  }
+  if(cityPoints){
+    cityPoints.material.opacity = c * 0.9;
+    cityPoints.material.size = 0.004 + c * 0.004;
+    cityPoints.visible = c > 0.01;
+  }
+
+  // pull the datasets in as soon as the user starts heading that way
+  if(cam.z < FADE.admin1.hi + 0.4) ensureAdmin1();
+  if(cam.z < FADE.city.hi   + 0.4) ensureCities();
 }
 
 /* ── 7. THREE.JS SCENE ────────────────────────────────────────────────── */
@@ -1010,24 +1099,85 @@ function inGeom(lon, lat, geom){
   }
   return false;
 }
+/* The bundled admin1 file stores rings as flat [lon,lat,lon,lat,…] arrays,
+   so point-in-polygon walks them two at a time. Parity across rings handles
+   holes, same as the country test above. */
+function inFlatRing(lon, lat, f){
+  let inside = false;
+  for(let i = 0, j = f.length - 2; i < f.length; j = i, i += 2){
+    const xi = f[i], yi = f[i+1], xj = f[j], yj = f[j+1];
+    if(((yi > lat) !== (yj > lat)) &&
+       (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+function inFlatRings(lon, lat, rings){
+  let hit = false;
+  for(const flat of rings) if(inFlatRing(lon, lat, flat)) hit = !hit;
+  return hit;
+}
+function centroidOfFlat(rings){
+  let best = null, bl = 0;
+  for(const flat of rings) if(flat.length > bl){ bl = flat.length; best = flat; }
+  if(!best) return {lat:0, lon:0};
+  let sx = 0, sy = 0, n = 0;
+  for(let i = 0; i + 1 < best.length; i += 2){ sx += best[i]; sy += best[i+1]; n++; }
+  return {lon: sx/n, lat: sy/n};
+}
+
 function findCountry(lat, lon){
   if(!S.countries) return null;
   return S.countries.features.find(f=>inGeom(lon,lat,f.geometry)) || null;
 }
 function findAdmin1(lat, lon, iso){
   if(!S.admin1) return null;
-  return S.admin1.features.find(f=>{
-    const a = f.properties.adm0_a3 || f.properties.iso_a2;
-    return a===iso && inGeom(lon,lat,f.geometry);
-  }) || null;
-}
-function findCityNear(lat, lon, maxDeg){
-  let best=null, bd=Infinity;
-  for(const [k,c] of Object.entries(SEED.cities)){
-    const d = Math.hypot(c.lat-lat, (c.lon-lon)*Math.cos(lat*Math.PI/180));
-    if(d < bd){ bd=d; best={key:k, ...c}; }
+  const regions = S.admin1[iso];
+  if(!regions) return null;
+  for(const [name, rings] of regions){
+    if(inFlatRings(lon, lat, rings)) return {name, rings, iso};
   }
-  return bd <= maxDeg ? best : null;
+  // Simplifying 38 MB of boundaries down to 2.8 MB shaves detail off
+  // coastlines, so a click on a waterfront city can land just outside every
+  // polygon. Fall back to the nearest boundary within ~60 km.
+  return nearestRegion(lat, lon, regions, 0.6);
+}
+
+function nearestRegion(lat, lon, regions, maxDeg){
+  let best = null, bd = Infinity;
+  const cos = Math.cos(lat * Math.PI / 180);
+  for(const [name, rings] of regions){
+    for(const flat of rings){
+      for(let i = 0; i + 1 < flat.length; i += 2){
+        const d = Math.hypot(flat[i+1] - lat, (flat[i] - lon) * cos);
+        if(d < bd){ bd = d; best = {name, rings, iso:regions.iso}; }
+      }
+    }
+  }
+  if(bd > maxDeg || !best) return null;
+  const hit = regions.find(r => r[0] === best.name);
+  return hit ? {name:hit[0], rings:hit[1]} : null;
+}
+function regionByName(iso, name){
+  const regions = S.admin1 && S.admin1[iso];
+  if(!regions) return null;
+  const hit = regions.find(r => r[0] === name);
+  return hit ? {name:hit[0], rings:hit[1], iso} : null;
+}
+/* Nearest major city to a point. Checks the bundled geography first, then
+   looks for a matching record in the surveillance data. */
+function findCityNear(lat, lon, maxDeg){
+  if(!S.cities) return null;
+  const cosLat = Math.cos(lat * Math.PI / 180);
+  let best = null, bd = Infinity;
+  for(const c of S.cities){
+    const d = Math.hypot(c[2] - lat, (c[1] - lon) * cosLat);
+    if(d < bd){ bd = d; best = c; }
+  }
+  if(bd > maxDeg || !best) return null;
+  const [name, lonC, latC, tier, iso, adm1] = best;
+  return { name, lon:lonC, lat:latC, tier, iso, adm1,
+           key: iso + ':' + name,
+           rec: SEED.cities[iso + ':' + name] || null };
 }
 
 /* ── 10. DRILL-DOWN ────────────────────────────────────────────────────── */
@@ -1036,23 +1186,25 @@ function onClick(e){
   const ll = pick(e); if(!ll) return;
   const lod = currentLOD();
 
+  // deepest tier first: a city marker beats the region under it
   if(lod === 'city'){
-    const c = findCityNear(ll.lat, ll.lon, 3.5);
+    const c = findCityNear(ll.lat, ll.lon, 2.2);
     if(c){ selectCity(c); return; }
   }
+
   const f = findCountry(ll.lat, ll.lon);
-  if(!f){ return; }
+  if(!f) return;
   const iso = isoOf(f);
 
   if(lod === 'world' && S.view.level === 'world'){
     selectContinent(contOf(f));
-  } else if(lod !== 'city' && S.view.iso !== iso){
-    selectCountry(iso, f);
-  } else {
-    const a = findAdmin1(ll.lat, ll.lon, iso);
-    if(a) selectAdmin1(iso, a);
-    else selectCountry(iso, f);
+    return;
   }
+  if(lod !== 'world'){
+    const a = findAdmin1(ll.lat, ll.lon, iso);
+    if(a && (S.view.iso === iso || lod === 'city')){ selectAdmin1(iso, a); return; }
+  }
+  selectCountry(iso, f);
 }
 
 const _cent = new WeakMap();
@@ -1102,15 +1254,15 @@ function selectCountry(iso, feature){
   ensureAdmin1();
   refresh();
 }
-function selectAdmin1(iso, f){
-  const nm = f.properties.name || f.properties.NAME || '—';
-  S.view = {level:'admin1', continent:S.view.continent, iso, region:nm, city:null};
-  const c = centroidOf(f); flyTo(c.lat, c.lon, 1.45);
+function selectAdmin1(iso, region){
+  S.view = {level:'admin1', continent:S.view.continent, iso, region:region.name, city:null};
+  const c = centroidOfFlat(region.rings);
+  flyTo(c.lat, c.lon, 1.55);
   refresh();
 }
 function selectCity(c){
-  const [iso, nm] = c.key.split(':');
-  S.view = {level:'city', continent:S.view.continent, iso, region:S.view.region, city:nm};
+  S.view = {level:'city', continent:S.view.continent, iso:c.iso,
+            region: c.adm1 || S.view.region, city:c.name};
   flyTo(c.lat, c.lon, 1.34);
   refresh();
 }
@@ -1129,9 +1281,17 @@ function ensureAdmin1(){
   if(S.admin1 || S._a1loading) return;
   S._a1loading = true;
   fetchFirst(GEO.admin1)
-    .then(j=>{ S.admin1 = j; paint(); rebuildBorders(); })
-    .catch(()=>{ note('Subnational boundaries unavailable — country tier only.'); })
+    .then(j=>{ S.admin1 = j; paint(); })
+    .catch(()=>{ note('State boundaries unavailable — country tier only.'); })
     .finally(()=>{ S._a1loading = false; });
+}
+function ensureCities(){
+  if(S.cities || S._ctloading) return;
+  S._ctloading = true;
+  fetchFirst(GEO.cities)
+    .then(j=>{ S.cities = j; })
+    .catch(()=>{ note('City data unavailable.'); })
+    .finally(()=>{ S._ctloading = false; });
 }
 
 /* ── 11. HOVER ────────────────────────────────────────────────────────── */
@@ -1144,28 +1304,47 @@ function onHover(e){
     hoverRAF = 0;
     const ll = pick(e);
     if(!ll){ hideTip(); return; }
-    let key=null, name=null, rec=null, sev=null;
+    const lod = currentLOD();
+    let name = null, rec = null, sev = null, note = null;
 
-    if(currentLOD()==='city'){
-      const c = findCityNear(ll.lat, ll.lon, 3.0);
-      if(c){ key=c.key; name=c.key.split(':')[1]; rec=c; sev=entitySeverity(c); }
-    }
-    if(!key && currentLOD()!=='world' && S.admin1 && S.view.iso){
-      const a = findAdmin1(ll.lat, ll.lon, S.view.iso);
-      if(a){
-        const nm = a.properties.name; key = S.view.iso+':'+nm; name = nm;
-        rec = SEED.admin1[key]; sev = rec ? entitySeverity(rec) : null;
+    const f = findCountry(ll.lat, ll.lon);
+    const iso = f ? isoOf(f) : null;
+
+    // city marker under the cursor?
+    if(lod === 'city'){
+      const c = findCityNear(ll.lat, ll.lon, 1.6);
+      if(c){
+        name = c.name;
+        rec  = c.rec;
+        if(!rec && c.adm1) rec = SEED.admin1[c.iso + ':' + c.adm1] || null;
+        if(rec) note = c.rec ? null : 'figures for ' + c.adm1;
+        if(!rec && iso){ rec = SEED.countries[iso]; note = 'national figures'; }
+        sev = rec ? entitySeverity(rec) : null;
       }
     }
-    if(!key){
-      const f = findCountry(ll.lat, ll.lon);
-      if(f){ key = isoOf(f); name = nameOf(f); rec = SEED.countries[key]; sev = rec?entitySeverity(rec):null; }
+
+    // state / province
+    if(!name && lod !== 'world' && iso){
+      const a = findAdmin1(ll.lat, ll.lon, iso);
+      if(a){
+        name = a.name;
+        rec  = SEED.admin1[iso + ':' + a.name] || null;
+        if(!rec){ rec = SEED.countries[iso]; note = rec ? 'national figures' : null; }
+        sev = rec ? entitySeverity(rec) : null;
+      }
     }
-    if(!key){ hideTip(); return; }
-    showTip(e, name, rec, sev);
+
+    // country
+    if(!name && f){
+      name = nameOf(f); rec = SEED.countries[iso];
+      sev = rec ? entitySeverity(rec) : null;
+    }
+
+    if(!name){ hideTip(); return; }
+    showTip(e, name, rec, sev, note);
   });
 }
-function showTip(e, name, rec, sev){
+function showTip(e, name, rec, sev, scopeNote){
   const t = tierOf(sev);
   const dis = (rec && rec.diseases) ? rec.diseases : [];
   const rows = dis.slice(0,3).map(d=>{
@@ -1174,6 +1353,7 @@ function showTip(e, name, rec, sev){
   }).join('') || `<div class="td"><span>No reported activity</span><span>—</span></div>`;
   const fresh = freshness(freshestAsOf(dis));
   tip.innerHTML = `<div class="tn">${esc(name)}</div>${rows}
+    ${scopeNote ? `<div class="td" style="color:var(--ink-dim);font-style:italic">${esc(scopeNote)}</div>` : ''}
     <div class="tt" style="color:${t.hex}">
       <span style="width:6px;height:6px;border-radius:50%;background:${t.hex};display:block"></span>${t.name}${sev!=null?' · '+sev:''}
       <span style="margin-left:auto;color:${fresh.hex}">${fresh.label}</span>
@@ -1429,11 +1609,10 @@ function renderFeed(){
     el.onclick = ()=>{
       const iso = el.dataset.iso;
       const region = el.dataset.region;
-      if(region && S.admin1){
-        const f = S.admin1.features.find(x =>
-          (x.properties.adm0_a3 || x.properties.iso_a2) === iso &&
-          x.properties.name === region);
-        if(f){ selectAdmin1(iso, f); return; }
+      if(region){
+        ensureAdmin1();
+        const r = regionByName(iso, region);
+        if(r){ selectAdmin1(iso, r); return; }
       }
       selectCountry(iso);
     };
@@ -1480,27 +1659,53 @@ function renderLabels(){
   const box = $('#labels'); box.innerHTML='';
   const lod = currentLOD();
   let list = [];
-  if(lod === 'city'){
-    list = Object.entries(SEED.cities).map(([k,c])=>({name:k.split(':')[1], lat:c.lat, lon:c.lon, sev:entitySeverity(c)}));
+
+  if(lod === 'city' && S.cities){
+    // Only label the tiers that have faded in, and cap the count, so the
+    // view never turns into a wall of text. Tier 0 = capitals + megacities.
+    const c = fadeIn(cam.z, FADE.city.hi, FADE.city.lo);
+    const maxTier = cam.z < 1.45 ? 2 : (cam.z < 1.65 ? 1 : 0);
+    if(c > 0.15){
+      list = S.cities
+        .filter(x => x[3] <= maxTier)
+        .slice(0, 400)
+        .map(x => ({
+          name:x[0], lat:x[2], lon:x[1], city:true,
+          sev: S.entities.get(x[4] + ':' + x[0])?.sev ?? null
+        }));
+    }
   } else if(lod !== 'world' && S.countries){
     list = S.countries.features
       .filter(f => SEED.countries[isoOf(f)])
       .map(f=>{ const c = centroidOf(f); return {name:nameOf(f), lat:c.lat, lon:c.lon, sev:S.entities.get(isoOf(f))?.sev}; });
   }
   const camDir = new THREE.Vector3(0,0,1);
-  list.forEach(it=>{
+  const onScreen = [];
+  for(const it of list){
     const p = latLonToVec(it.lat, it.lon, R*1.005);
     const w = p.clone().applyMatrix4(spin.matrixWorld);
-    if(w.clone().normalize().dot(camDir) < 0.12) return;      // back of the globe
+    if(w.clone().normalize().dot(camDir) < 0.12) continue;    // back of the globe
     const s = w.clone().project(camera);
-    if(Math.abs(s.x)>1 || Math.abs(s.y)>1) return;
+    if(Math.abs(s.x) > 1 || Math.abs(s.y) > 1) continue;
+    onScreen.push({ it, x:(s.x*0.5+0.5)*innerWidth, y:(-s.y*0.5+0.5)*innerHeight,
+                    d: s.x*s.x + s.y*s.y });
+  }
+  // nearest the centre of the view wins, and stop at a readable number
+  onScreen.sort((a,b) => a.d - b.d);
+  const LIMIT = 34;
+  const placed = [];
+  for(const o of onScreen){
+    if(placed.length >= LIMIT) break;
+    // crude de-clutter: skip anything sitting on top of a label already placed
+    if(placed.some(q => Math.abs(q.x-o.x) < 68 && Math.abs(q.y-o.y) < 15)) continue;
+    placed.push(o);
     const el = document.createElement('div');
     el.className = 'lbl';
-    el.style.left = (s.x*0.5+0.5)*innerWidth+'px';
-    el.style.top  = (-s.y*0.5+0.5)*innerHeight+'px';
-    el.innerHTML = `<i style="background:${tierOf(it.sev).hex}"></i>${esc(it.name)}`;
+    el.style.left = o.x + 'px';
+    el.style.top  = o.y + 'px';
+    el.innerHTML = `<i style="background:${tierOf(o.it.sev).hex}"></i>${esc(o.it.name)}`;
     box.appendChild(el);
-  });
+  }
 }
 
 function refresh(){
@@ -1534,11 +1739,11 @@ function tick(){
   tilt.rotation.x = cam.rx;
   spin.rotation.y = cam.ry;
   camera.position.z = cam.z;
+  updateDetailLayers();
   const lod = currentLOD();
   if(lod !== lastLOD){
     lastLOD = lod; S.lod = lod;
-    paint(); rebuildBorders(); renderCrumbs();
-    if(lod !== 'world') ensureAdmin1();
+    paint(); renderCrumbs();
   }
   spin.updateMatrixWorld();
   const now = performance.now();
