@@ -798,8 +798,8 @@ function fadeIn(z, hi, lo){
 }
 
 const FADE = {
-  admin1: { hi:2.60, lo:2.25 },
-  city:   { hi:1.95, lo:1.70 }
+  admin1: { hi:2.85, lo:2.50 },   // states begin appearing on the first scroll
+  city:   { hi:2.10, lo:1.85 }    // cities a little further in
 };
 
 function buildLines(features, colour, opacity, radius, filter){
@@ -922,7 +922,7 @@ function updateDetailLayers(){
     cityPoints.visible = c > 0.01;
   }
 
-  // pull the datasets in as soon as the user starts heading that way
+  // datasets are preloaded at boot; this is just a safety net if that failed
   if(cam.z < FADE.admin1.hi + 0.4) ensureAdmin1();
   if(cam.z < FADE.city.hi   + 0.4) ensureCities();
 }
@@ -1024,7 +1024,7 @@ function facing(lat, lon){
 const cam = { rx:0.28, ry:-1.2, z:3.1, trx:0.28, try_:-1.2, tz:3.1 };
 
 const ZOOM_MIN = 1.28, ZOOM_MAX = 3.4;
-const LOD_REGION = 2.45, LOD_CITY = 1.80;
+const LOD_REGION = 2.75, LOD_CITY = 2.00;   // kept in step with FADE above
 
 function currentLOD(){
   if(cam.z > LOD_REGION) return 'world';
@@ -1278,19 +1278,27 @@ function goUp(){
 
 let lastLOD = 'world', lastFocus = null;
 function ensureAdmin1(){
-  if(S.admin1 || S._a1loading) return;
+  if(S.admin1 || S._a1loading || S._a1failed) return;
   S._a1loading = true;
   fetchFirst(GEO.admin1)
     .then(j=>{ S.admin1 = j; paint(); })
-    .catch(()=>{ note('State boundaries unavailable — country tier only.'); })
+    .catch(()=>{
+      S._a1failed = true;
+      note('public/data/admin1.json did not load — states cannot be shown. '
+         + 'Check that the data folder was uploaded.');
+    })
     .finally(()=>{ S._a1loading = false; });
 }
 function ensureCities(){
-  if(S.cities || S._ctloading) return;
+  if(S.cities || S._ctloading || S._ctfailed) return;
   S._ctloading = true;
   fetchFirst(GEO.cities)
     .then(j=>{ S.cities = j; })
-    .catch(()=>{ note('City data unavailable.'); })
+    .catch(()=>{
+      S._ctfailed = true;
+      note('public/data/cities.json did not load — cities cannot be shown. '
+         + 'Check that the data folder was uploaded.');
+    })
     .finally(()=>{ S._ctloading = false; });
 }
 
@@ -1651,8 +1659,21 @@ function renderCrumbs(){
     if(o.fn) b.onclick = o.fn;
     c.appendChild(b);
   });
-  $('#zoomstate').textContent = currentLOD()==='world' ? 'countries'
-    : currentLOD()==='region' ? 'states visible' : 'cities visible';
+  $('#zoomstate').innerHTML = zoomHint();
+}
+
+/* Tells you what tier you're on AND what the next scroll would reveal —
+   the previous badge just said "countries" with no hint that more existed. */
+function zoomHint(){
+  if(S._a1failed) return '<span style="color:var(--s3)">states data missing</span>';
+  const lod = currentLOD();
+  if(lod === 'world')  return 'countries <span style="opacity:.5">· scroll in for states</span>';
+  if(lod === 'region'){
+    return S.admin1
+      ? 'states <span style="opacity:.5">· scroll in for cities</span>'
+      : 'states <span style="opacity:.5">· loading…</span>';
+  }
+  return S.cities ? 'cities' : 'cities <span style="opacity:.5">· loading…</span>';
 }
 
 function renderLabels(){
@@ -1834,8 +1855,10 @@ async function boot(){
   setTimeout(()=>$('#boot').classList.add('gone'), 260);
   tick();
 
-  // Fetch city points in the background so the closest tier has real geography
-  fetchFirst(GEO.cities).then(j=>{ S.cities = j; }).catch(()=>{});
+  // Pull the state and city datasets straight away, in the background, so
+  // there's no stall the first time someone zooms in.
+  ensureAdmin1();
+  ensureCities();
 
   const age = Math.round((Date.now()-new Date(SEED.updated))/86400000);
   if(age > 7) note(`Dataset is ${age} days old — the pipeline may have stalled.`);
