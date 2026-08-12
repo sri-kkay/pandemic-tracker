@@ -1,0 +1,12 @@
+{
+  "cleanUrls": true,
+  "functions": {
+    "api/outbreaks.js": { "maxDuration": 30 }
+  },
+  "headers": [
+    {
+      "source": "/api/outbreaks",
+      "headers": [{ "key": "Access-Control-Allow-Origin", "value": "*" }]
+    }
+  ]
+}
