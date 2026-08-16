@@ -1902,6 +1902,15 @@ function sentences(text){
     .filter(s => s.length > 40 && s.length < 320);
 }
 
+/* Everything sentences() returns is plain text pulled from an encyclopaedia
+   extract — unlike the hand-written LIBRARY entries above, which deliberately
+   embed <strong>/<em> for emphasis. The front end injects both into innerHTML
+   with no further sanitisation, so anything that didn't come from us must be
+   escaped before it enters an entry, not trusted downstream. */
+function escapeHTML(s){
+  return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
 /* The plain-text extract keeps headings as "== Treatment ==". Turn the whole
    article into { headingLowercased: bodyText }. */
 function sectionise(extract){
@@ -1921,7 +1930,7 @@ function pickSection(sections, candidates, limit = 3){
     for(const [heading, body] of Object.entries(sections)){
       if(heading === want || heading.startsWith(want + ' ') || heading.includes(want)){
         const s = sentences(body);
-        if(s.length) return s.slice(0, limit);
+        if(s.length) return s.slice(0, limit).map(escapeHTML);
       }
     }
   }
@@ -1965,7 +1974,7 @@ export async function autoFetch(name){
         const avoid      = pickSection(sec, ['transmission', 'cause', 'risk factor', 'spread', 'epidemiology'], 2);
         const symptoms   = pickSection(sec, ['signs and symptoms', 'symptoms', 'presentation', 'clinical']);
         const detection  = pickSection(sec, ['diagnosis', 'diagnostic', 'screening', 'testing']);
-        const intro      = sentences(sec.intro || '').slice(0, 2);
+        const intro      = sentences(sec.intro || '').slice(0, 2).map(escapeHTML);
 
         // Only accept the result if at least two tabs came back with content.
         const filled = [treatments, prevention, avoid].filter(a => a.length).length;
