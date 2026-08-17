@@ -1,0 +1,2974 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>Global Epidemic &amp; Pandemic Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,500..700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════════════════════════════════════
+   DUTY STATION — the console skin.
+   One saturated colour family in the whole interface: the severity ramp.
+   Everything else is graphite and bone, docked flush, separated by hairlines.
+   Both themes are declared here; JS resolves "system" to one of them and
+   writes it to <html data-theme>. Nothing in the CSS reads the media query,
+   so the theme can be forced from the entry screen.
+   ══════════════════════════════════════════════════════════════════════════ */
+:root{
+  --rail:322px;
+  --dossier:356px;
+  --strip:46px;
+  --font-display:'Archivo','IBM Plex Sans',system-ui,sans-serif;
+  --font-ui:'IBM Plex Sans',system-ui,-apple-system,'Noto Sans','Noto Sans Arabic','Noto Sans Devanagari','Noto Sans SC',sans-serif;
+  --font-num:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+html[data-theme="dark"]{
+  --bg:#0E1113;
+  --console:#151A1D;
+  --console-2:#1B2226;
+  --well:#080A0B;
+  --hairline:#242A2E;
+  --hairline-hi:#39424A;
+  --ink:#E7E3DA;
+  --ink-mute:#9C978C;
+  --ink-dim:#6C6860;
+  --hover:rgba(255,255,255,.045);
+  --sunk:rgba(0,0,0,.28);
+  --s0:#21A45C; --s1:#D0A02C; --s2:#E8743B; --s3:#D93A3A; --s4:#8E2020;
+  --nodata:#3A4046;
+}
+html[data-theme="light"]{
+  --bg:#D3D6D1;
+  --console:#F0F1EC;
+  --console-2:#E3E6E0;
+  --well:#C6CAC7;
+  --hairline:#C2C6C0;
+  --hairline-hi:#A4A9A2;
+  --ink:#13171A;
+  --ink-mute:#545954;
+  --ink-dim:#7B807A;
+  --hover:rgba(0,0,0,.05);
+  --sunk:rgba(0,0,0,.05);
+  --s0:#1B7F45; --s1:#8F6710; --s2:#BC5320; --s3:#AE2320; --s4:#761A1A;
+  --nodata:#A6A59A;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{
+  background:var(--bg);color:var(--ink);font-family:var(--font-ui);font-size:13px;
+  -webkit-font-smoothing:antialiased;
+}
+canvas{display:block}
+button,select,input{font:inherit;color:inherit}
+button{background:none;border:none;cursor:pointer}
+:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+
+.eyebrow{
+  font-family:var(--font-num);font-size:9px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--ink-dim);font-weight:500;
+}
+.num{font-family:var(--font-num);font-variant-numeric:tabular-nums}
+.disp{font-family:var(--font-display);font-stretch:118%;font-weight:600;letter-spacing:.01em}
+
+/* ── frame ─────────────────────────────────────────────────────────────── */
+#app{
+  display:grid;height:100dvh;
+  grid-template-columns:var(--rail) minmax(0,1fr) var(--dossier);
+  grid-template-rows:var(--strip) minmax(0,1fr) auto;
+}
+body.focus #app{grid-template-columns:0 minmax(0,1fr) 0}
+body.focus #rail,body.focus #dossier{display:none}
+
+/* ── status strip ──────────────────────────────────────────────────────── */
+#strip{
+  grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:0 12px;
+  background:var(--console);border-block-end:1px solid var(--hairline);z-index:30;
+}
+#mark{display:flex;align-items:center;gap:9px;flex:none}
+#markglyph{display:grid;grid-template-columns:repeat(2,4px);grid-template-rows:repeat(2,4px);gap:1px}
+#markglyph i{display:block;width:4px;height:4px}
+#markglyph i:nth-child(1){background:var(--s0)}
+#markglyph i:nth-child(2){background:var(--s1)}
+#markglyph i:nth-child(3){background:var(--s2)}
+#markglyph i:nth-child(4){background:var(--s4)}
+#marktext{
+  font-family:var(--font-display);font-stretch:125%;font-weight:700;
+  font-size:11px;letter-spacing:.13em;text-transform:uppercase;white-space:nowrap;
+}
+#crumbs{display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden;flex:1}
+#crumbs .cr{font-size:12.5px;color:var(--ink-mute);white-space:nowrap;padding:2px 0}
+#crumbs .cr:hover{color:var(--ink)}
+#crumbs .cr.now{color:var(--ink);font-weight:500}
+#crumbs .sep{color:var(--ink-dim);font-size:11px}
+#zoomstate{
+  font-family:var(--font-num);font-size:9px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-dim);white-space:nowrap;flex:none;
+}
+#stripctl{display:flex;align-items:center;gap:8px;flex:none;margin-inline-start:auto}
+.seg{display:flex;border:1px solid var(--hairline);border-radius:3px;overflow:hidden}
+.seg button{
+  padding:5px 8px;font-family:var(--font-num);font-size:9px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-dim);
+}
+.seg button+button{border-inline-start:1px solid var(--hairline)}
+.seg button:hover{color:var(--ink-mute);background:var(--hover)}
+.seg button.on{color:var(--ink);background:var(--console-2)}
+#langsel{
+  appearance:none;background:transparent;border:1px solid var(--hairline);border-radius:3px;
+  padding:5px 22px 5px 8px;font-family:var(--font-num);font-size:9.5px;letter-spacing:.08em;
+  color:var(--ink-mute);cursor:pointer;
+  background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position:calc(100% - 12px) 12px,calc(100% - 8px) 12px;
+  background-size:4px 4px,4px 4px;background-repeat:no-repeat;
+}
+html[dir="rtl"] #langsel{padding:5px 8px 5px 22px;background-position:12px 12px,8px 12px}
+#langsel:hover{color:var(--ink);border-color:var(--hairline-hi)}
+#langsel option{background:var(--console);color:var(--ink)}
+.iconbtn{
+  padding:5px 8px;border:1px solid var(--hairline);border-radius:3px;color:var(--ink-dim);
+  font-family:var(--font-num);font-size:9px;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;
+}
+.iconbtn:hover{color:var(--ink);border-color:var(--hairline-hi)}
+
+/* ── left rail: the report log ─────────────────────────────────────────── */
+#rail{
+  grid-column:1;grid-row:2;background:var(--console);border-inline-end:1px solid var(--hairline);
+  display:flex;flex-direction:column;min-height:0;z-index:20;
+}
+.railhead{
+  display:flex;align-items:baseline;gap:8px;padding:11px 14px 9px;
+  border-block-end:1px solid var(--hairline);
+}
+.railhead h2{font-family:var(--font-display);font-stretch:120%;font-weight:600;font-size:12px;letter-spacing:.14em;text-transform:uppercase}
+#feedcount{font-family:var(--font-num);font-size:9.5px;color:var(--ink-dim);margin-inline-start:auto;text-align:end}
+#controls{padding:9px 14px;border-block-end:1px solid var(--hairline);display:flex;flex-direction:column;gap:9px}
+.ctlrow{display:flex;align-items:center;gap:10px}
+#thr{flex:1;accent-color:var(--s2);height:2px}
+#thrval{font-family:var(--font-num);font-size:10px;color:var(--ink-mute);min-width:18px;text-align:end}
+#routinetoggle{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink-mute);cursor:pointer}
+#routinetoggle:hover{color:var(--ink)}
+#showroutine{accent-color:var(--s2);width:12px;height:12px;flex:none;cursor:pointer}
+#routinecount{margin-inline-start:auto;font-family:var(--font-num);font-size:9px;color:var(--ink-dim);white-space:nowrap}
+#feedsort{display:flex;gap:5px}
+#feedsort button{
+  flex:1;font-family:var(--font-num);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-dim);padding:5px 3px;border:1px solid var(--hairline);border-radius:3px;
+}
+#feedsort button:hover{color:var(--ink-mute)}
+#feedsort button.on{color:var(--ink);background:var(--console-2);border-color:var(--hairline-hi)}
+
+#feedlist{overflow-y:auto;flex:1;min-height:0}
+/* the log: a mono age gutter, a continuous rule, a severity tick per entry */
+.fitem{
+  display:grid;grid-template-columns:42px 1fr;gap:10px;padding:9px 14px 9px 10px;cursor:pointer;
+  border-block-end:1px solid var(--hairline);text-align:start;width:100%;
+}
+.fitem:hover{background:var(--hover)}
+.fage{
+  font-family:var(--font-num);font-size:9.5px;color:var(--ink-dim);padding-top:2px;
+  text-align:end;white-space:nowrap;
+}
+.fbody{min-width:0;border-inline-start:1px solid var(--hairline);padding-inline-start:11px;position:relative}
+.fbody::before{content:'';position:absolute;inset-inline-start:-3px;top:4px;width:5px;height:5px;background:var(--tick);border-radius:50%}
+.ftitle{display:block;font-size:12.5px;line-height:1.35;color:var(--ink)}
+.fplace{color:var(--ink-mute)}
+.fmeta{
+  font-family:var(--font-num);font-size:9px;letter-spacing:.05em;color:var(--ink-dim);
+  margin-top:4px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+}
+.fmeta .lv{text-transform:uppercase;letter-spacing:.12em}
+.fempty{padding:18px 14px;color:var(--ink-dim);font-size:12px;line-height:1.5}
+
+/* ── the spine: tier ledger, legend and filter in one control ──────────── */
+#spine{border-block-start:1px solid var(--hairline);padding:11px 14px 12px;background:var(--console)}
+#spinehead{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:9px}
+.tierrow{
+  display:grid;grid-template-columns:64px 1fr 26px;align-items:center;gap:8px;
+  width:100%;padding:2px 0;text-align:start;cursor:pointer;
+}
+.tierrow:hover .tname{color:var(--ink)}
+.tname{font-family:var(--font-num);font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-mute)}
+.tbarwrap{height:8px;background:var(--sunk);position:relative}
+.tbar{position:absolute;inset-block:0;inset-inline-start:0;min-width:2px}
+.tcount{font-family:var(--font-num);font-size:9.5px;color:var(--ink-dim);text-align:end}
+.tierrow.dimmed{opacity:.4}
+.legnote{margin-top:10px;font-size:10.5px;line-height:1.5;color:var(--ink-dim)}
+.legnote b{color:var(--ink-mute);font-weight:500}
+
+/* ── globe well ────────────────────────────────────────────────────────── */
+#well{grid-column:2;grid-row:2;position:relative;overflow:hidden;background:var(--well);min-width:0}
+#labels{position:absolute;inset:0;pointer-events:none;z-index:10;overflow:hidden}
+.lbl{
+  position:absolute;transform:translate(-50%,-50%);white-space:nowrap;
+  font-family:var(--font-num);font-size:9.5px;letter-spacing:.05em;
+  color:var(--ink);text-shadow:0 1px 3px var(--well),0 0 6px var(--well);
+  display:flex;align-items:center;gap:5px;
+}
+.lbl i{width:5px;height:5px;border-radius:50%;display:block;flex:none}
+#tip{
+  position:absolute;pointer-events:none;z-index:40;opacity:0;transition:opacity .1s;
+  background:var(--console);border:1px solid var(--hairline-hi);padding:9px 11px;
+  min-width:160px;max-width:250px;box-shadow:0 8px 24px rgba(0,0,0,.28);
+}
+#tip .tn{font-size:12.5px;font-weight:500;margin-bottom:6px;line-height:1.25}
+#tip .td{font-family:var(--font-num);font-size:10px;color:var(--ink-mute);display:flex;justify-content:space-between;gap:12px;padding:1px 0}
+#tip .tt{
+  display:flex;align-items:center;gap:6px;margin-top:7px;padding-top:7px;
+  border-top:1px solid var(--hairline);font-family:var(--font-num);font-size:9px;
+  letter-spacing:.1em;text-transform:uppercase;
+}
+#stale{
+  position:absolute;inset-block-end:14px;inset-inline-start:50%;transform:translateX(-50%);z-index:25;
+  font-size:11.5px;line-height:1.4;max-width:min(440px,86%);
+  color:var(--ink);background:var(--console);border:1px solid var(--hairline-hi);
+  padding:9px 13px;display:none;box-shadow:0 8px 24px rgba(0,0,0,.28);
+}
+html[dir="rtl"] #stale{transform:translateX(50%)}
+#backbtn{
+  position:absolute;inset-block-start:12px;inset-inline-start:12px;z-index:25;
+  padding:6px 10px;background:var(--console);border:1px solid var(--hairline);
+  font-family:var(--font-num);font-size:9px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--ink-mute);display:none;
+}
+#backbtn:hover{color:var(--ink);border-color:var(--hairline-hi)}
+body.deep #backbtn{display:block}
+
+/* ── right column: selection dossier + guidance drawer ─────────────────── */
+#dossier{
+  grid-column:3;grid-row:2;background:var(--console);border-inline-start:1px solid var(--hairline);
+  display:flex;flex-direction:column;min-height:0;z-index:20;
+}
+#infobody{overflow-y:auto;flex:1;min-height:0}
+#idhead{padding:13px 16px 14px;border-block-end:1px solid var(--hairline)}
+#idtop{display:flex;align-items:flex-start;gap:12px;justify-content:space-between}
+#idname{
+  font-family:var(--font-display);font-stretch:110%;font-weight:600;
+  font-size:21px;line-height:1.12;letter-spacing:-.005em;min-width:0;
+}
+#idscore{font-family:var(--font-num);font-size:34px;font-weight:600;line-height:.9;letter-spacing:-.03em;flex:none}
+#idbar{height:3px;margin:11px 0 9px;background:var(--sunk);position:relative}
+#idbar i{position:absolute;inset-block:0;inset-inline-start:0;display:block}
+#idmeta{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-family:var(--font-num);font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-dim)}
+#idmeta .dot{width:5px;height:5px;border-radius:50%;display:inline-block;margin-inline-end:5px}
+#idscorelbl{font-family:var(--font-num);font-size:8.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-dim);margin-top:3px;text-align:end}
+
+.dcard{padding:13px 16px;border-block-end:1px solid var(--hairline)}
+.dname{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px}
+.dname h4{font-size:13.5px;font-weight:600;line-height:1.25}
+.trend{font-family:var(--font-num);font-size:10.5px;font-weight:600;white-space:nowrap}
+.stats{display:flex;border-block:1px solid var(--hairline)}
+.stat{flex:1;padding:8px 0}
+.stat+.stat{border-inline-start:1px solid var(--hairline);padding-inline-start:10px}
+.stat .k{font-family:var(--font-num);font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:4px}
+.stat .v{font-family:var(--font-num);font-size:15px;font-weight:600;letter-spacing:-.02em}
+.srcline{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:9px;flex-wrap:wrap}
+.src{margin-top:6px;font-size:10.5px;line-height:1.5;color:var(--ink-dim)}
+a{color:var(--ink-mute);text-decoration:none;border-bottom:1px solid var(--hairline-hi)}
+a:hover{color:var(--ink)}
+.prov{color:var(--s1)}
+.empty{padding:16px;color:var(--ink-dim);font-size:12px;line-height:1.55}
+
+.fresh{
+  display:inline-flex;align-items:center;gap:5px;font-family:var(--font-num);
+  font-size:9px;letter-spacing:.09em;text-transform:uppercase;white-space:nowrap;
+}
+.freshdot{width:5px;height:5px;border-radius:50%;flex:none}
+
+/* drawer */
+#drawer{border-block-start:1px solid var(--hairline);display:flex;flex-direction:column;min-height:0;max-height:48%}
+#tabs{display:flex;background:var(--console-2)}
+#tabs button{
+  flex:1;padding:9px 3px;font-family:var(--font-num);font-size:8.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-dim);border-block-end:2px solid transparent;
+}
+#tabs button:hover{color:var(--ink-mute)}
+#tabs button.on{color:var(--ink);border-block-end-color:var(--s2);background:var(--console)}
+#dsel{display:flex;gap:5px;padding:8px 12px;overflow-x:auto;border-block-end:1px solid var(--hairline)}
+#dsel::-webkit-scrollbar{height:0}
+#dsel button{
+  white-space:nowrap;font-size:11px;padding:4px 9px;border:1px solid var(--hairline);
+  border-radius:3px;color:var(--ink-dim);flex:none;
+}
+#dsel button:hover{color:var(--ink-mute)}
+#dsel button.on{color:var(--ink);border-color:var(--hairline-hi);background:var(--console-2)}
+#dsel button i{width:5px;height:5px;border-radius:50%;display:inline-block;margin-inline-end:6px;vertical-align:middle}
+#tabbody{padding:12px 16px 14px;overflow-y:auto;font-size:12.5px;line-height:1.55;color:var(--ink-mute);min-height:0}
+#tabbody ul{list-style:none}
+#tabbody li{padding:6px 0 6px 14px;position:relative;border-block-end:1px solid var(--hairline)}
+#tabbody li:last-child{border-block-end:none}
+#tabbody li::before{content:'';position:absolute;inset-inline-start:0;top:13px;width:6px;height:1px;background:var(--ink-dim)}
+html[dir="rtl"] #tabbody li{padding:6px 14px 6px 0}
+#tabbody li strong{color:var(--ink);font-weight:500}
+.gtag{
+  display:inline-flex;align-items:center;gap:5px;font-family:var(--font-num);font-size:8.5px;
+  letter-spacing:.1em;text-transform:uppercase;padding:2px 6px;border:1px solid;border-radius:3px;margin-bottom:9px;
+}
+.gapplied{font-size:10.5px;color:var(--ink-dim);margin-bottom:9px;line-height:1.45}
+.gsrc{margin-top:11px;padding-top:10px;border-top:1px solid var(--hairline);font-size:10.5px;line-height:1.5;color:var(--ink-dim)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}
+.chip{font-size:11px;padding:5px 9px;border:1px solid var(--hairline);border-radius:3px;color:var(--ink-mute)}
+.chip:hover{border-color:var(--hairline-hi);color:var(--ink)}
+.chip.on{border-color:var(--s2);color:var(--ink);background:var(--console-2)}
+#chipans{margin-top:10px;padding:11px 12px;background:var(--console-2);font-size:12px;line-height:1.5;display:none}
+#chipans .qh{font-family:var(--font-num);font-size:8.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:8px}
+#chipans ul{list-style:none}
+#chipans li{padding:4px 0 4px 12px;position:relative;border:none}
+#chipans li::before{content:'';position:absolute;inset-inline-start:0;top:11px;width:5px;height:1px;background:var(--ink-dim)}
+html[dir="rtl"] #chipans li{padding:4px 12px 4px 0}
+#askq{
+  width:100%;margin-top:8px;padding:7px 9px;font-size:12px;background:var(--sunk);
+  border:1px solid var(--hairline);color:var(--ink);border-radius:3px;
+}
+#askq:focus{outline:none;border-color:var(--hairline-hi)}
+
+/* ── foot ──────────────────────────────────────────────────────────────── */
+#foot{
+  grid-column:1/-1;grid-row:3;display:flex;align-items:center;gap:14px;padding:0 12px;height:26px;
+  background:var(--console);border-block-start:1px solid var(--hairline);
+  font-family:var(--font-num);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);
+  z-index:30;
+}
+#footsrc{margin-inline-start:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#sheettabs{display:none;gap:6px}
+
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:var(--hairline-hi);border:3px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ── entry screen ──────────────────────────────────────────────────────── */
+#entry{
+  position:fixed;inset:0;z-index:100;background:var(--bg);color:var(--ink);
+  display:grid;place-items:center;padding:24px;overflow:auto;transition:opacity .45s ease;
+}
+#entry.gone{opacity:0;pointer-events:none}
+#entrygrid{
+  width:min(940px,100%);display:grid;grid-template-columns:1.15fr .85fr;gap:0;
+  border:1px solid var(--hairline);background:var(--console);
+}
+.ecol{padding:34px 34px 30px}
+.elead{border-inline-end:1px solid var(--hairline)}
+#etitle{
+  font-family:var(--font-display);font-stretch:125%;font-weight:700;
+  font-size:clamp(26px,3.4vw,38px);line-height:1.02;letter-spacing:-.01em;text-transform:uppercase;
+}
+#etag{margin-top:14px;font-size:13px;line-height:1.6;color:var(--ink-mute);max-width:38ch}
+#ekey{margin-top:26px;display:flex;flex-direction:column;gap:0}
+#ekey .er{display:grid;grid-template-columns:40px 1fr auto;align-items:center;gap:10px;padding:6px 0;border-block-end:1px solid var(--hairline)}
+#ekey .er:first-child{border-block-start:1px solid var(--hairline)}
+#ekey .eswatch{height:6px}
+#ekey .ename{font-family:var(--font-num);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-mute)}
+#ekey .erange{font-family:var(--font-num);font-size:9.5px;color:var(--ink-dim)}
+#esrc{margin-top:22px;font-family:var(--font-num);font-size:9px;letter-spacing:.1em;line-height:1.9;text-transform:uppercase;color:var(--ink-dim)}
+.efield{margin-bottom:22px}
+.efield>.eyebrow{display:block;margin-bottom:9px}
+#langgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+#langgrid button{
+  padding:9px 10px;border:1px solid var(--hairline);border-radius:3px;text-align:start;
+  font-size:12.5px;color:var(--ink-mute);
+}
+#langgrid button:hover{border-color:var(--hairline-hi);color:var(--ink)}
+#langgrid button.on{border-color:var(--ink-dim);background:var(--console-2);color:var(--ink)}
+#themeseg{display:flex;border:1px solid var(--hairline);border-radius:3px;overflow:hidden}
+#themeseg button{flex:1;padding:9px 6px;font-family:var(--font-num);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim)}
+#themeseg button+button{border-inline-start:1px solid var(--hairline)}
+#themeseg button:hover{background:var(--hover);color:var(--ink-mute)}
+#themeseg button.on{background:var(--console-2);color:var(--ink)}
+#enterbtn{
+  position:relative;width:100%;padding:14px;border:1px solid var(--ink-dim);border-radius:3px;
+  font-family:var(--font-display);font-stretch:118%;font-weight:600;font-size:12px;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--ink);overflow:hidden;
+}
+#enterbtn:hover:not(:disabled){background:var(--console-2)}
+#enterbtn:disabled{color:var(--ink-dim);border-color:var(--hairline);cursor:progress}
+#enterbtn span{position:relative;z-index:1}
+#bootbar{position:absolute;inset-block-end:0;inset-inline-start:0;height:2px;width:0;background:var(--s2);transition:width .35s ease}
+#efine{margin-top:14px;font-size:11px;line-height:1.55;color:var(--ink-dim)}
+
+/* ── narrow screens: rails become sheets ───────────────────────────────── */
+@media (max-width:1080px){
+  :root{--rail:280px;--dossier:310px}
+}
+@media (max-width:900px){
+  #app{grid-template-columns:minmax(0,1fr);grid-template-rows:var(--strip) minmax(0,1fr) auto}
+  #well{grid-column:1;grid-row:2}
+  #rail,#dossier{
+    grid-column:1;grid-row:2;align-self:end;height:62%;
+    border:none;border-block-start:1px solid var(--hairline-hi);
+    box-shadow:0 -10px 30px rgba(0,0,0,.3);display:none;
+  }
+  body.sheet-reports #rail{display:flex}
+  body.sheet-selection #dossier{display:flex}
+  #sheettabs{display:flex;margin-inline-start:auto;flex:none}
+  #footsrc,#zoomstate,#focusbtn{display:none}
+  #strip{gap:8px}
+  #crumbs{flex:1}
+  #footstat{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #entrygrid{grid-template-columns:1fr}
+  .elead{border-inline-end:none;border-block-end:1px solid var(--hairline)}
+  .ecol{padding:26px 22px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <header id="strip">
+    <div id="mark">
+      <div id="markglyph"><i></i><i></i><i></i><i></i></div>
+      <span id="marktext" data-i18n="mark">Pandemic Tracker</span>
+    </div>
+    <nav id="crumbs" aria-label="Location"></nav>
+    <div id="zoomstate"></div>
+    <div id="stripctl">
+      <select id="langsel" aria-label="Language"></select>
+      <div class="seg" id="themeseg2" role="group" aria-label="Appearance">
+        <button data-theme-set="light" data-i18n="theme.lightShort" title="Light">Light</button>
+        <button data-theme-set="dark" data-i18n="theme.darkShort" title="Dark">Dark</button>
+        <button data-theme-set="system" data-i18n="theme.systemShort" title="System">Auto</button>
+      </div>
+      <button class="iconbtn" id="focusbtn" data-i18n="focus.hide">Hide panels</button>
+    </div>
+  </header>
+
+  <aside id="rail">
+    <div class="railhead">
+      <h2 data-i18n="rail.reports">Reports</h2>
+      <span id="feedcount" class="num"></span>
+    </div>
+
+    <div id="controls">
+      <div class="ctlrow">
+        <span class="eyebrow" data-i18n="filter.minSeverity">Min severity</span>
+        <input type="range" id="thr" min="0" max="100" value="0" step="5" aria-label="Minimum severity">
+        <span id="thrval">0</span>
+      </div>
+      <label id="routinetoggle">
+        <input type="checkbox" id="showroutine">
+        <span data-i18n="filter.routine">Include routine weekly surveillance</span>
+        <span id="routinecount"></span>
+      </label>
+      <div id="feedsort" role="group">
+        <button class="on" data-sort="recent" data-i18n="sort.newest">Newest</button>
+        <button data-sort="severity" data-i18n="sort.worst">Worst</button>
+        <button data-sort="stale" data-i18n="sort.stale">Most stale</button>
+      </div>
+    </div>
+
+    <div id="feedlist"></div>
+
+    <div id="spine">
+      <div id="spinehead">
+        <span class="eyebrow" data-i18n="spine.title">Countries by severity</span>
+        <span class="eyebrow" style="letter-spacing:.06em;text-transform:none" data-i18n="spine.hint">Click a tier to filter</span>
+      </div>
+      <div id="tierrows"></div>
+      <div class="legnote" id="legnote"></div>
+    </div>
+  </aside>
+
+  <main id="well">
+    <div id="labels"></div>
+    <div id="tip" role="status"></div>
+    <button id="backbtn" data-i18n="back">Back</button>
+    <div id="stale" role="status"></div>
+  </main>
+
+  <aside id="dossier">
+    <div id="infobody"></div>
+    <div id="drawer">
+      <div id="tabs" role="tablist">
+        <button class="on" data-tab="treatments" data-i18n="tab.treatments">Treatments</button>
+        <button data-tab="travel" data-i18n="tab.travel">Travel</button>
+        <button data-tab="avoid" data-i18n="tab.avoid">Avoid</button>
+        <button data-tab="prevention" data-i18n="tab.prevention">Prevention</button>
+      </div>
+      <div id="dsel" style="display:none"></div>
+      <div id="tabbody"></div>
+    </div>
+  </aside>
+
+  <footer id="foot">
+    <span id="footstat"></span>
+    <span id="footsrc"></span>
+    <div class="seg" id="sheettabs">
+      <button data-sheet="reports" data-i18n="rail.reports">Reports</button>
+      <button data-sheet="selection" data-i18n="sheet.selection">Selection</button>
+    </div>
+  </footer>
+
+</div>
+
+<div id="entry">
+  <div id="entrygrid">
+    <div class="ecol elead">
+      <h1 id="etitle" data-i18n="title">Global Epidemic &amp; Pandemic Tracker</h1>
+      <p id="etag" data-i18n="tagline"></p>
+      <div id="ekey"></div>
+      <div id="esrc"></div>
+    </div>
+    <div class="ecol">
+      <div class="efield">
+        <span class="eyebrow" data-i18n="language">Language</span>
+        <div id="langgrid"></div>
+      </div>
+      <div class="efield">
+        <span class="eyebrow" data-i18n="appearance">Appearance</span>
+        <div id="themeseg" role="group">
+          <button data-theme-set="light" data-i18n="theme.light">Light</button>
+          <button data-theme-set="dark" data-i18n="theme.dark">Dark</button>
+          <button data-theme-set="system" data-i18n="theme.system">System</button>
+        </div>
+      </div>
+      <button id="enterbtn" disabled><span data-i18n="preparing">Preparing the map</span><i id="bootbar"></i></button>
+      <p id="efine" data-i18n="entry.note"></p>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   GLOBAL EPIDEMIC & PANDEMIC TRACKER
+   ──────────────────────────────────────────────────────────────────────────
+   Interface layer only. All epidemiological values below are SEED data —
+   replace them wholesale with your pipeline's output. See INTEGRATION-GUIDE.md.
+
+   The single integration point is loadData() at the bottom of this file.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 0a. LANGUAGE ─────────────────────────────────────────────────────────
+   Every string the interface owns lives here. Disease names, guidance text
+   and source names come from the feeds and stay in the language the agency
+   published them in — translating an epidemiological bulletin on the client
+   would be inventing data.
+
+   Adding a language: add its code to LANGS, copy the `en` block, translate
+   the values. Missing keys fall back to English, so a partial block is safe.
+   {n} style placeholders are filled by t(key, {n:…}).                       */
+
+const LANGS = [
+  { id:'en', label:'English'   },
+  { id:'es', label:'Español'   },
+  { id:'fr', label:'Français'  },
+  { id:'pt', label:'Português' },
+  { id:'zh', label:'中文'       },
+  { id:'hi', label:'हिन्दी'      },
+  { id:'ar', label:'العربية', dir:'rtl' }
+];
+const LOCALE = { en:'en-US', es:'es-ES', fr:'fr-FR', pt:'pt-BR', zh:'zh-CN', hi:'hi-IN', ar:'ar-u-nu-latn' };
+
+const STR = {
+en:{
+ 'title':'Global Epidemic & Pandemic Tracker','mark':'Pandemic Tracker',
+ 'tagline':'Live outbreak surveillance, pulled from public health agencies and redrawn every time the pipeline runs. Pick a language and a look, then open the map.',
+ 'entry.note':'Not medical advice. Every figure on the map carries the date its source published it — check that date before you act on a number.',
+ 'language':'Language','appearance':'Appearance',
+ 'theme.light':'Light','theme.dark':'Dark','theme.system':'System',
+ 'theme.lightShort':'Light','theme.darkShort':'Dark','theme.systemShort':'Auto',
+ 'preparing':'Preparing the map','enter':'Open the map','sources':'Sources',
+ 'boot.boundaries':'Loading boundaries','boot.indexing':'Indexing countries',
+ 'boot.applying':'Applying surveillance data','boot.painting':'Painting severity','boot.ready':'Ready',
+ 'boot.failed':'Natural Earth could not be reached. Check the network, then reload.',
+ 'rail.reports':'Reports','sheet.selection':'Selection','focus.hide':'Hide panels','focus.show':'Show panels','back':'Back',
+ 'filter.minSeverity':'Min severity','filter.routine':'Include routine weekly surveillance',
+ 'filter.hidden':'{n} hidden','filter.shown':'{n} shown',
+ 'sort.newest':'Newest','sort.worst':'Worst','sort.stale':'Most stale',
+ 'feed.head':'{n} reports · newest {age}','feed.headNoDates':'{n} reports · no dates','feed.undated':'{n} undated',
+ 'feed.empty':'Nothing at or above severity {n}. Lower the threshold to see quieter events.',
+ 'level.country':'Country','level.state':'State','level.city':'City','tag.routine':'routine',
+ 'cases':'{n} cases','nocount':'no count',
+ 'tier.0':'contained','tier.1':'moderate','tier.2':'high','tier.3':'severe','tier.4':'critical','tier.none':'no data',
+ 'spine.title':'Countries by severity','spine.hint':'Click a tier to filter',
+ 'legend.hatched':'Hatched fill — nothing currently reported from there.',
+ 'legend.edge':'White edge — cases growing fast over the last 7 days.',
+ 'legend.saturation':'Deeper fill means more cases per 100,000 people.',
+ 'sel.world':'World','sel.continent':'Continent','sel.country':'Country','sel.state':'State or province','sel.city':'City',
+ 'sel.index':'Severity index · 0–100','sel.newest':'newest figure',
+ 'conf.high':'high confidence','conf.medium':'medium confidence','conf.low':'low confidence',
+ 'sel.none':'Nothing is reported here in the current dataset. That is not the same as no risk — check the reporting confidence above.',
+ 'stat.cases':'Cases','stat.deaths':'Deaths','stat.cfr':'CFR',
+ 'undated':'undated','sourcePending':'Source pending','openSource':'open source',
+ 'provisional':'Provisional — check the primary feed before you publish this figure.',
+ 'tab.treatments':'Treatments','tab.travel':'Travel','tab.avoid':'Avoid','tab.prevention':'Prevention',
+ 'guide.treatments':'treatment','guide.travel':'travel','guide.avoid':'avoidance','guide.prevention':'prevention',
+ 'drawer.empty':'Nothing is reported here, so there is nothing to advise on. Pick a country, or an entry in the report list, to see treatment, travel and prevention notes.',
+ 'drawer.auto':'auto-compiled · unverified','drawer.pending':'lookup pending',
+ 'drawer.applied':'Showing {src} guidance — this location reports it as “{name}”.',
+ 'drawer.noGuidance':'No {kind} guidance for {name} in this dataset.',
+ 'chip.symptoms':'Symptoms','chip.detection':'Early detection','chip.places':'Places to avoid','chip.other':'Ask something else',
+ 'chiphead.symptoms':'What it looks like','chiphead.detection':'How it is confirmed',
+ 'chiphead.places':'What to stay away from','chiphead.other':'Ask something else',
+ 'chip.notLoaded':'Not loaded for this disease.',
+ 'ask.intro':'Searches WHO and CDC for this disease. The answers come from them, not from this site.',
+ 'ask.placeholder':'e.g. is it safe to travel to {place}?','ask.who':'Search WHO','ask.cdc':'Search CDC',
+ 'age.today':'today','age.yesterday':'yesterday','age.days':'{n}d ago','age.weeks':'{n}w ago','age.months':'{n}mo ago','age.nodate':'no date',
+ 'tip.none':'No reported activity','tip.national':'national figures','tip.figuresFor':'figures for {region}',
+ 'zoom.countries':'countries','zoom.states':'states','zoom.cities':'cities',
+ 'zoom.nextStates':'scroll in for states','zoom.nextCities':'scroll in for cities',
+ 'zoom.loading':'loading','zoom.statesMissing':'state data missing','crumb.world':'World',
+ 'note.offline':'Live data is unavailable. Showing the bundled snapshot.',
+ 'note.old':'This dataset is {n} days old. The pipeline may have stalled.',
+ 'note.admin1':'The state boundary file did not load, so states cannot be shown.',
+ 'note.cities':'The city file did not load, so cities cannot be shown.',
+ 'foot.stat':'{n} reports · {c} places · newest {age}',
+ 'cont.Africa':'Africa','cont.Asia':'Asia','cont.Europe':'Europe','cont.North America':'North America',
+ 'cont.South America':'South America','cont.Oceania':'Oceania','cont.Antarctica':'Antarctica','cont.Oceans':'Oceans'
+},
+es:{
+ 'title':'Rastreador mundial de epidemias y pandemias','mark':'Rastreador de pandemias',
+ 'tagline':'Vigilancia de brotes en directo, tomada de agencias de salud pública y redibujada cada vez que se ejecuta el proceso. Elige idioma y aspecto, y abre el mapa.',
+ 'entry.note':'No es consejo médico. Cada cifra del mapa lleva la fecha en que su fuente la publicó; revisa esa fecha antes de actuar sobre un número.',
+ 'language':'Idioma','appearance':'Apariencia',
+ 'theme.light':'Claro','theme.dark':'Oscuro','theme.system':'Sistema',
+ 'theme.lightShort':'Claro','theme.darkShort':'Oscuro','theme.systemShort':'Auto',
+ 'preparing':'Preparando el mapa','enter':'Abrir el mapa','sources':'Fuentes',
+ 'boot.boundaries':'Cargando fronteras','boot.indexing':'Indexando países',
+ 'boot.applying':'Aplicando datos de vigilancia','boot.painting':'Pintando la gravedad','boot.ready':'Listo',
+ 'boot.failed':'No se pudo contactar con Natural Earth. Revisa la red y vuelve a cargar.',
+ 'rail.reports':'Informes','sheet.selection':'Selección','focus.hide':'Ocultar paneles','focus.show':'Mostrar paneles','back':'Volver',
+ 'filter.minSeverity':'Gravedad mín.','filter.routine':'Incluir vigilancia semanal rutinaria',
+ 'filter.hidden':'{n} ocultos','filter.shown':'{n} visibles',
+ 'sort.newest':'Recientes','sort.worst':'Peores','sort.stale':'Más antiguos',
+ 'feed.head':'{n} informes · más reciente {age}','feed.headNoDates':'{n} informes · sin fechas','feed.undated':'{n} sin fecha',
+ 'feed.empty':'Nada con gravedad {n} o superior. Baja el umbral para ver eventos más leves.',
+ 'level.country':'País','level.state':'Estado','level.city':'Ciudad','tag.routine':'rutina',
+ 'cases':'{n} casos','nocount':'sin recuento',
+ 'tier.0':'contenido','tier.1':'moderado','tier.2':'alto','tier.3':'grave','tier.4':'crítico','tier.none':'sin datos',
+ 'spine.title':'Países por gravedad','spine.hint':'Pulsa un nivel para filtrar',
+ 'legend.hatched':'Trama diagonal: no hay notificaciones actuales de esa zona.',
+ 'legend.edge':'Borde blanco: los casos crecen rápido en los últimos 7 días.',
+ 'legend.saturation':'Cuanto más intenso el relleno, más casos por cada 100.000 habitantes.',
+ 'sel.world':'Mundo','sel.continent':'Continente','sel.country':'País','sel.state':'Estado o provincia','sel.city':'Ciudad',
+ 'sel.index':'Índice de gravedad · 0–100','sel.newest':'cifra más reciente',
+ 'conf.high':'confianza alta','conf.medium':'confianza media','conf.low':'confianza baja',
+ 'sel.none':'No hay nada notificado aquí en el conjunto de datos actual. Eso no significa que no haya riesgo: revisa la confianza de notificación de arriba.',
+ 'stat.cases':'Casos','stat.deaths':'Muertes','stat.cfr':'Letalidad',
+ 'undated':'sin fecha','sourcePending':'Fuente pendiente','openSource':'abrir fuente',
+ 'provisional':'Provisional: verifica la fuente primaria antes de publicar esta cifra.',
+ 'tab.treatments':'Tratamientos','tab.travel':'Viajes','tab.avoid':'Evitar','tab.prevention':'Prevención',
+ 'guide.treatments':'tratamiento','guide.travel':'viaje','guide.avoid':'precaución','guide.prevention':'prevención',
+ 'drawer.empty':'Aquí no hay nada notificado, así que no hay nada que aconsejar. Elige un país, o una entrada de la lista de informes, para ver notas de tratamiento, viaje y prevención.',
+ 'drawer.auto':'recopilado automáticamente · sin verificar','drawer.pending':'consulta en curso',
+ 'drawer.applied':'Mostrando la guía de {src}: aquí se notifica como «{name}».',
+ 'drawer.noGuidance':'No hay guía de {kind} para {name} en este conjunto de datos.',
+ 'chip.symptoms':'Síntomas','chip.detection':'Detección temprana','chip.places':'Lugares que evitar','chip.other':'Preguntar otra cosa',
+ 'chiphead.symptoms':'Cómo se manifiesta','chiphead.detection':'Cómo se confirma',
+ 'chiphead.places':'De qué mantenerse lejos','chiphead.other':'Preguntar otra cosa',
+ 'chip.notLoaded':'No se ha cargado para esta enfermedad.',
+ 'ask.intro':'Busca esta enfermedad en la OMS y los CDC. Las respuestas vienen de ellos, no de este sitio.',
+ 'ask.placeholder':'p. ej.: ¿es seguro viajar a {place}?','ask.who':'Buscar en la OMS','ask.cdc':'Buscar en los CDC',
+ 'age.today':'hoy','age.yesterday':'ayer','age.days':'hace {n} d','age.weeks':'hace {n} sem','age.months':'hace {n} meses','age.nodate':'sin fecha',
+ 'tip.none':'Sin actividad notificada','tip.national':'cifras nacionales','tip.figuresFor':'cifras de {region}',
+ 'zoom.countries':'países','zoom.states':'estados','zoom.cities':'ciudades',
+ 'zoom.nextStates':'acércate para ver estados','zoom.nextCities':'acércate para ver ciudades',
+ 'zoom.loading':'cargando','zoom.statesMissing':'faltan datos de estados','crumb.world':'Mundo',
+ 'note.offline':'Los datos en vivo no están disponibles. Se muestra la copia incluida.',
+ 'note.old':'Este conjunto de datos tiene {n} días. El proceso puede estar detenido.',
+ 'note.admin1':'El archivo de fronteras estatales no se cargó, así que no se pueden mostrar los estados.',
+ 'note.cities':'El archivo de ciudades no se cargó, así que no se pueden mostrar las ciudades.',
+ 'foot.stat':'{n} informes · {c} lugares · más reciente {age}',
+ 'cont.Africa':'África','cont.Asia':'Asia','cont.Europe':'Europa','cont.North America':'América del Norte',
+ 'cont.South America':'América del Sur','cont.Oceania':'Oceanía','cont.Antarctica':'Antártida','cont.Oceans':'Océanos'
+},
+fr:{
+ 'title':'Suivi mondial des épidémies et pandémies','mark':'Suivi des pandémies',
+ 'tagline':'Surveillance des flambées en direct, issue des agences de santé publique et redessinée à chaque exécution du pipeline. Choisis une langue et un thème, puis ouvre la carte.',
+ 'entry.note':'Ceci n’est pas un avis médical. Chaque chiffre porte la date à laquelle sa source l’a publié : vérifie cette date avant d’agir.',
+ 'language':'Langue','appearance':'Apparence',
+ 'theme.light':'Clair','theme.dark':'Sombre','theme.system':'Système',
+ 'theme.lightShort':'Clair','theme.darkShort':'Sombre','theme.systemShort':'Auto',
+ 'preparing':'Préparation de la carte','enter':'Ouvrir la carte','sources':'Sources',
+ 'boot.boundaries':'Chargement des frontières','boot.indexing':'Indexation des pays',
+ 'boot.applying':'Application des données de surveillance','boot.painting':'Coloration de la gravité','boot.ready':'Prêt',
+ 'boot.failed':'Natural Earth est injoignable. Vérifie le réseau, puis recharge.',
+ 'rail.reports':'Signalements','sheet.selection':'Sélection','focus.hide':'Masquer les panneaux','focus.show':'Afficher les panneaux','back':'Retour',
+ 'filter.minSeverity':'Gravité min.','filter.routine':'Inclure la surveillance hebdomadaire de routine',
+ 'filter.hidden':'{n} masqués','filter.shown':'{n} affichés',
+ 'sort.newest':'Récents','sort.worst':'Plus graves','sort.stale':'Plus anciens',
+ 'feed.head':'{n} signalements · plus récent {age}','feed.headNoDates':'{n} signalements · sans dates','feed.undated':'{n} sans date',
+ 'feed.empty':'Rien au niveau de gravité {n} ou au-dessus. Baisse le seuil pour voir les événements plus calmes.',
+ 'level.country':'Pays','level.state':'Région','level.city':'Ville','tag.routine':'routine',
+ 'cases':'{n} cas','nocount':'sans comptage',
+ 'tier.0':'maîtrisé','tier.1':'modéré','tier.2':'élevé','tier.3':'grave','tier.4':'critique','tier.none':'aucune donnée',
+ 'spine.title':'Pays par gravité','spine.hint':'Clique un niveau pour filtrer',
+ 'legend.hatched':'Hachures : aucun signalement en cours depuis cette zone.',
+ 'legend.edge':'Bord blanc : les cas augmentent vite sur les 7 derniers jours.',
+ 'legend.saturation':'Plus la couleur est dense, plus il y a de cas pour 100 000 habitants.',
+ 'sel.world':'Monde','sel.continent':'Continent','sel.country':'Pays','sel.state':'Région ou province','sel.city':'Ville',
+ 'sel.index':'Indice de gravité · 0–100','sel.newest':'chiffre le plus récent',
+ 'conf.high':'confiance élevée','conf.medium':'confiance moyenne','conf.low':'confiance faible',
+ 'sel.none':'Rien n’est signalé ici dans le jeu de données actuel. Cela ne veut pas dire qu’il n’y a pas de risque : regarde la confiance de notification ci-dessus.',
+ 'stat.cases':'Cas','stat.deaths':'Décès','stat.cfr':'Létalité',
+ 'undated':'sans date','sourcePending':'Source à venir','openSource':'ouvrir la source',
+ 'provisional':'Provisoire — vérifie le flux primaire avant de publier ce chiffre.',
+ 'tab.treatments':'Traitements','tab.travel':'Voyage','tab.avoid':'Éviter','tab.prevention':'Prévention',
+ 'guide.treatments':'traitement','guide.travel':'voyage','guide.avoid':'précaution','guide.prevention':'prévention',
+ 'drawer.empty':'Rien n’est signalé ici, il n’y a donc rien à conseiller. Choisis un pays, ou une entrée de la liste, pour voir les notes de traitement, de voyage et de prévention.',
+ 'drawer.auto':'compilé automatiquement · non vérifié','drawer.pending':'recherche en cours',
+ 'drawer.applied':'Affichage des consignes « {src} » — ce lieu le signale sous le nom « {name} ».',
+ 'drawer.noGuidance':'Aucune consigne de {kind} pour {name} dans ce jeu de données.',
+ 'chip.symptoms':'Symptômes','chip.detection':'Détection précoce','chip.places':'Lieux à éviter','chip.other':'Poser une autre question',
+ 'chiphead.symptoms':'À quoi ça ressemble','chiphead.detection':'Comment on le confirme',
+ 'chiphead.places':'Ce qu’il faut éviter','chiphead.other':'Poser une autre question',
+ 'chip.notLoaded':'Non chargé pour cette maladie.',
+ 'ask.intro':'Recherche cette maladie sur les sites de l’OMS et des CDC. Les réponses viennent d’eux, pas de ce site.',
+ 'ask.placeholder':'ex. : est-il sûr de voyager à {place} ?','ask.who':'Chercher à l’OMS','ask.cdc':'Chercher aux CDC',
+ 'age.today':'aujourd’hui','age.yesterday':'hier','age.days':'il y a {n} j','age.weeks':'il y a {n} sem','age.months':'il y a {n} mois','age.nodate':'sans date',
+ 'tip.none':'Aucune activité signalée','tip.national':'chiffres nationaux','tip.figuresFor':'chiffres pour {region}',
+ 'zoom.countries':'pays','zoom.states':'régions','zoom.cities':'villes',
+ 'zoom.nextStates':'zoome pour les régions','zoom.nextCities':'zoome pour les villes',
+ 'zoom.loading':'chargement','zoom.statesMissing':'données régionales manquantes','crumb.world':'Monde',
+ 'note.offline':'Les données en direct sont indisponibles. Affichage de la copie embarquée.',
+ 'note.old':'Ce jeu de données a {n} jours. Le pipeline est peut-être bloqué.',
+ 'note.admin1':'Le fichier des frontières régionales n’a pas été chargé, les régions ne peuvent pas s’afficher.',
+ 'note.cities':'Le fichier des villes n’a pas été chargé, les villes ne peuvent pas s’afficher.',
+ 'foot.stat':'{n} signalements · {c} lieux · plus récent {age}',
+ 'cont.Africa':'Afrique','cont.Asia':'Asie','cont.Europe':'Europe','cont.North America':'Amérique du Nord',
+ 'cont.South America':'Amérique du Sud','cont.Oceania':'Océanie','cont.Antarctica':'Antarctique','cont.Oceans':'Océans'
+},
+pt:{
+ 'title':'Rastreador global de epidemias e pandemias','mark':'Rastreador de pandemias',
+ 'tagline':'Vigilância de surtos ao vivo, obtida de agências de saúde pública e redesenhada a cada execução do pipeline. Escolha o idioma e a aparência e abra o mapa.',
+ 'entry.note':'Não é aconselhamento médico. Cada número no mapa traz a data em que a fonte o publicou — confira essa data antes de agir.',
+ 'language':'Idioma','appearance':'Aparência',
+ 'theme.light':'Claro','theme.dark':'Escuro','theme.system':'Sistema',
+ 'theme.lightShort':'Claro','theme.darkShort':'Escuro','theme.systemShort':'Auto',
+ 'preparing':'Preparando o mapa','enter':'Abrir o mapa','sources':'Fontes',
+ 'boot.boundaries':'Carregando fronteiras','boot.indexing':'Indexando países',
+ 'boot.applying':'Aplicando dados de vigilância','boot.painting':'Colorindo a gravidade','boot.ready':'Pronto',
+ 'boot.failed':'Não foi possível acessar o Natural Earth. Verifique a rede e recarregue.',
+ 'rail.reports':'Relatos','sheet.selection':'Seleção','focus.hide':'Ocultar painéis','focus.show':'Mostrar painéis','back':'Voltar',
+ 'filter.minSeverity':'Gravidade mín.','filter.routine':'Incluir vigilância semanal de rotina',
+ 'filter.hidden':'{n} ocultos','filter.shown':'{n} exibidos',
+ 'sort.newest':'Recentes','sort.worst':'Piores','sort.stale':'Mais antigos',
+ 'feed.head':'{n} relatos · mais recente {age}','feed.headNoDates':'{n} relatos · sem datas','feed.undated':'{n} sem data',
+ 'feed.empty':'Nada com gravidade {n} ou acima. Baixe o limite para ver eventos mais brandos.',
+ 'level.country':'País','level.state':'Estado','level.city':'Cidade','tag.routine':'rotina',
+ 'cases':'{n} casos','nocount':'sem contagem',
+ 'tier.0':'contido','tier.1':'moderado','tier.2':'alto','tier.3':'grave','tier.4':'crítico','tier.none':'sem dados',
+ 'spine.title':'Países por gravidade','spine.hint':'Clique num nível para filtrar',
+ 'legend.hatched':'Hachura: nada sendo notificado dessa área no momento.',
+ 'legend.edge':'Borda branca: casos crescendo rápido nos últimos 7 dias.',
+ 'legend.saturation':'Preenchimento mais forte significa mais casos por 100 mil habitantes.',
+ 'sel.world':'Mundo','sel.continent':'Continente','sel.country':'País','sel.state':'Estado ou província','sel.city':'Cidade',
+ 'sel.index':'Índice de gravidade · 0–100','sel.newest':'número mais recente',
+ 'conf.high':'confiança alta','conf.medium':'confiança média','conf.low':'confiança baixa',
+ 'sel.none':'Nada é notificado aqui no conjunto de dados atual. Isso não é o mesmo que ausência de risco — veja a confiança de notificação acima.',
+ 'stat.cases':'Casos','stat.deaths':'Óbitos','stat.cfr':'Letalidade',
+ 'undated':'sem data','sourcePending':'Fonte pendente','openSource':'abrir fonte',
+ 'provisional':'Provisório — confira o feed primário antes de publicar este número.',
+ 'tab.treatments':'Tratamentos','tab.travel':'Viagem','tab.avoid':'Evitar','tab.prevention':'Prevenção',
+ 'guide.treatments':'tratamento','guide.travel':'viagem','guide.avoid':'precaução','guide.prevention':'prevenção',
+ 'drawer.empty':'Nada é notificado aqui, então não há o que orientar. Escolha um país, ou um item da lista de relatos, para ver notas de tratamento, viagem e prevenção.',
+ 'drawer.auto':'compilado automaticamente · não verificado','drawer.pending':'consulta em andamento',
+ 'drawer.applied':'Mostrando as orientações de {src} — este local a notifica como “{name}”.',
+ 'drawer.noGuidance':'Sem orientações de {kind} para {name} neste conjunto de dados.',
+ 'chip.symptoms':'Sintomas','chip.detection':'Detecção precoce','chip.places':'Lugares a evitar','chip.other':'Perguntar outra coisa',
+ 'chiphead.symptoms':'Como se manifesta','chiphead.detection':'Como é confirmada',
+ 'chiphead.places':'Do que se manter longe','chiphead.other':'Perguntar outra coisa',
+ 'chip.notLoaded':'Não carregado para esta doença.',
+ 'ask.intro':'Busca esta doença na OMS e no CDC. As respostas vêm deles, não deste site.',
+ 'ask.placeholder':'ex.: é seguro viajar para {place}?','ask.who':'Buscar na OMS','ask.cdc':'Buscar no CDC',
+ 'age.today':'hoje','age.yesterday':'ontem','age.days':'há {n} d','age.weeks':'há {n} sem','age.months':'há {n} meses','age.nodate':'sem data',
+ 'tip.none':'Sem atividade notificada','tip.national':'números nacionais','tip.figuresFor':'números de {region}',
+ 'zoom.countries':'países','zoom.states':'estados','zoom.cities':'cidades',
+ 'zoom.nextStates':'aproxime para ver estados','zoom.nextCities':'aproxime para ver cidades',
+ 'zoom.loading':'carregando','zoom.statesMissing':'faltam dados estaduais','crumb.world':'Mundo',
+ 'note.offline':'Dados ao vivo indisponíveis. Exibindo a cópia embutida.',
+ 'note.old':'Este conjunto de dados tem {n} dias. O pipeline pode ter parado.',
+ 'note.admin1':'O arquivo de fronteiras estaduais não carregou, então os estados não podem ser exibidos.',
+ 'note.cities':'O arquivo de cidades não carregou, então as cidades não podem ser exibidas.',
+ 'foot.stat':'{n} relatos · {c} locais · mais recente {age}',
+ 'cont.Africa':'África','cont.Asia':'Ásia','cont.Europe':'Europa','cont.North America':'América do Norte',
+ 'cont.South America':'América do Sul','cont.Oceania':'Oceania','cont.Antarctica':'Antártida','cont.Oceans':'Oceanos'
+},
+zh:{
+ 'title':'全球疫情追踪地图','mark':'疫情追踪',
+ 'tagline':'实时疫情监测数据来自各国公共卫生机构，每次数据流水线运行后都会重新绘制。先选择语言和外观，然后打开地图。',
+ 'entry.note':'本站不提供医疗建议。地图上的每个数字都标有来源发布日期——依据数字采取行动前请先核对日期。',
+ 'language':'语言','appearance':'外观',
+ 'theme.light':'浅色','theme.dark':'深色','theme.system':'跟随系统',
+ 'theme.lightShort':'浅色','theme.darkShort':'深色','theme.systemShort':'自动',
+ 'preparing':'正在准备地图','enter':'打开地图','sources':'数据来源',
+ 'boot.boundaries':'正在加载边界','boot.indexing':'正在建立国家索引',
+ 'boot.applying':'正在应用监测数据','boot.painting':'正在绘制严重程度','boot.ready':'就绪',
+ 'boot.failed':'无法连接 Natural Earth。请检查网络后重新加载。',
+ 'rail.reports':'通报','sheet.selection':'所选区域','focus.hide':'隐藏面板','focus.show':'显示面板','back':'返回',
+ 'filter.minSeverity':'最低严重度','filter.routine':'包含每周例行监测',
+ 'filter.hidden':'已隐藏 {n} 条','filter.shown':'已显示 {n} 条',
+ 'sort.newest':'最新','sort.worst':'最严重','sort.stale':'最陈旧',
+ 'feed.head':'{n} 条通报 · 最新 {age}','feed.headNoDates':'{n} 条通报 · 无日期','feed.undated':'{n} 条无日期',
+ 'feed.empty':'没有严重度达到 {n} 的记录。调低阈值可查看较轻的事件。',
+ 'level.country':'国家','level.state':'省/州','level.city':'城市','tag.routine':'例行',
+ 'cases':'{n} 例','nocount':'无计数',
+ 'tier.0':'已控制','tier.1':'中等','tier.2':'较高','tier.3':'严重','tier.4':'危急','tier.none':'无数据',
+ 'spine.title':'各国严重度分布','spine.hint':'点击等级即可筛选',
+ 'legend.hatched':'斜纹填充：该地区目前没有通报。',
+ 'legend.edge':'白色轮廓：过去 7 天病例增长迅速。',
+ 'legend.saturation':'颜色越深，每 10 万人中的病例越多。',
+ 'sel.world':'全球','sel.continent':'大洲','sel.country':'国家','sel.state':'省/州','sel.city':'城市',
+ 'sel.index':'严重度指数 · 0–100','sel.newest':'最新数据',
+ 'conf.high':'报告可信度高','conf.medium':'报告可信度中','conf.low':'报告可信度低',
+ 'sel.none':'当前数据集中该地区没有通报。这并不等于没有风险——请参考上方的报告可信度。',
+ 'stat.cases':'病例','stat.deaths':'死亡','stat.cfr':'病死率',
+ 'undated':'无日期','sourcePending':'来源待补','openSource':'打开来源',
+ 'provisional':'暂定数据——公开发布前请核对原始来源。',
+ 'tab.treatments':'治疗','tab.travel':'出行','tab.avoid':'避免','tab.prevention':'预防',
+ 'guide.treatments':'治疗','guide.travel':'出行','guide.avoid':'避免','guide.prevention':'预防',
+ 'drawer.empty':'此处没有通报，因此没有可提供的建议。请选择一个国家，或通报列表中的一条记录，查看治疗、出行和预防说明。',
+ 'drawer.auto':'自动汇编 · 未经核实','drawer.pending':'正在查询',
+ 'drawer.applied':'显示的是「{src}」的指引——该地区将其通报为「{name}」。',
+ 'drawer.noGuidance':'本数据集中没有 {name} 的{kind}指引。',
+ 'chip.symptoms':'症状','chip.detection':'早期发现','chip.places':'应避开的场所','chip.other':'问点别的',
+ 'chiphead.symptoms':'症状表现','chiphead.detection':'如何确诊',
+ 'chiphead.places':'应远离什么','chiphead.other':'问点别的',
+ 'chip.notLoaded':'该疾病的此项内容尚未加载。',
+ 'ask.intro':'在世卫组织和美国 CDC 网站上搜索这种疾病。答案来自它们，而不是本站。',
+ 'ask.placeholder':'例如：现在去{place}安全吗？','ask.who':'搜索世卫组织','ask.cdc':'搜索 CDC',
+ 'age.today':'今天','age.yesterday':'昨天','age.days':'{n} 天前','age.weeks':'{n} 周前','age.months':'{n} 个月前','age.nodate':'无日期',
+ 'tip.none':'没有通报的疫情','tip.national':'全国数据','tip.figuresFor':'{region}的数据',
+ 'zoom.countries':'国家','zoom.states':'省/州','zoom.cities':'城市',
+ 'zoom.nextStates':'继续放大查看省/州','zoom.nextCities':'继续放大查看城市',
+ 'zoom.loading':'加载中','zoom.statesMissing':'缺少省/州数据','crumb.world':'全球',
+ 'note.offline':'无法获取实时数据，正在显示内置快照。',
+ 'note.old':'该数据集已有 {n} 天，数据流水线可能已停止。',
+ 'note.admin1':'省/州边界文件未能加载，无法显示省/州。',
+ 'note.cities':'城市文件未能加载，无法显示城市。',
+ 'foot.stat':'{n} 条通报 · {c} 个地点 · 最新 {age}',
+ 'cont.Africa':'非洲','cont.Asia':'亚洲','cont.Europe':'欧洲','cont.North America':'北美洲',
+ 'cont.South America':'南美洲','cont.Oceania':'大洋洲','cont.Antarctica':'南极洲','cont.Oceans':'海洋'
+},
+hi:{
+ 'title':'वैश्विक महामारी एवं प्रकोप ट्रैकर','mark':'महामारी ट्रैकर',
+ 'tagline':'सार्वजनिक स्वास्थ्य एजेंसियों से लिया गया लाइव प्रकोप निगरानी डेटा, हर बार पाइपलाइन चलने पर दोबारा बनाया जाता है। भाषा और रूप चुनें, फिर नक्शा खोलें।',
+ 'entry.note':'यह चिकित्सकीय सलाह नहीं है। नक्शे के हर आँकड़े के साथ उसकी स्रोत तिथि दी गई है — किसी संख्या पर काम करने से पहले वह तिथि देखें।',
+ 'language':'भाषा','appearance':'रूप',
+ 'theme.light':'हल्का','theme.dark':'गहरा','theme.system':'सिस्टम',
+ 'theme.lightShort':'हल्का','theme.darkShort':'गहरा','theme.systemShort':'स्वतः',
+ 'preparing':'नक्शा तैयार हो रहा है','enter':'नक्शा खोलें','sources':'स्रोत',
+ 'boot.boundaries':'सीमाएँ लोड हो रही हैं','boot.indexing':'देशों की सूची बन रही है',
+ 'boot.applying':'निगरानी डेटा लागू हो रहा है','boot.painting':'गंभीरता रंगी जा रही है','boot.ready':'तैयार',
+ 'boot.failed':'Natural Earth तक नहीं पहुँच सके। नेटवर्क जाँचें, फिर पेज दोबारा लोड करें।',
+ 'rail.reports':'रिपोर्टें','sheet.selection':'चयन','focus.hide':'पैनल छिपाएँ','focus.show':'पैनल दिखाएँ','back':'वापस',
+ 'filter.minSeverity':'न्यूनतम गंभीरता','filter.routine':'नियमित साप्ताहिक निगरानी शामिल करें',
+ 'filter.hidden':'{n} छिपी','filter.shown':'{n} दिख रही',
+ 'sort.newest':'नवीनतम','sort.worst':'सबसे गंभीर','sort.stale':'सबसे पुरानी',
+ 'feed.head':'{n} रिपोर्टें · नवीनतम {age}','feed.headNoDates':'{n} रिपोर्टें · तिथि नहीं','feed.undated':'{n} बिना तिथि',
+ 'feed.empty':'गंभीरता {n} या उससे ऊपर कुछ नहीं है। हल्की घटनाएँ देखने के लिए सीमा घटाएँ।',
+ 'level.country':'देश','level.state':'राज्य','level.city':'शहर','tag.routine':'नियमित',
+ 'cases':'{n} मामले','nocount':'गिनती नहीं',
+ 'tier.0':'नियंत्रित','tier.1':'मध्यम','tier.2':'उच्च','tier.3':'गंभीर','tier.4':'अति गंभीर','tier.none':'डेटा नहीं',
+ 'spine.title':'गंभीरता के अनुसार देश','spine.hint':'छाँटने के लिए स्तर पर क्लिक करें',
+ 'legend.hatched':'तिरछी धारियाँ: वहाँ से फ़िलहाल कोई रिपोर्ट नहीं।',
+ 'legend.edge':'सफ़ेद किनारा: पिछले 7 दिनों में मामले तेज़ी से बढ़ रहे हैं।',
+ 'legend.saturation':'गहरा रंग यानी प्रति 1,00,000 लोगों पर अधिक मामले।',
+ 'sel.world':'विश्व','sel.continent':'महाद्वीप','sel.country':'देश','sel.state':'राज्य या प्रांत','sel.city':'शहर',
+ 'sel.index':'गंभीरता सूचकांक · 0–100','sel.newest':'नवीनतम आँकड़ा',
+ 'conf.high':'रिपोर्टिंग भरोसा: उच्च','conf.medium':'रिपोर्टिंग भरोसा: मध्यम','conf.low':'रिपोर्टिंग भरोसा: कम',
+ 'sel.none':'मौजूदा डेटा में यहाँ से कुछ रिपोर्ट नहीं हुआ है। इसका मतलब जोखिम न होना नहीं है — ऊपर दिया रिपोर्टिंग भरोसा देखें।',
+ 'stat.cases':'मामले','stat.deaths':'मौतें','stat.cfr':'मृत्यु दर',
+ 'undated':'बिना तिथि','sourcePending':'स्रोत लंबित','openSource':'स्रोत खोलें',
+ 'provisional':'अस्थायी — यह आँकड़ा प्रकाशित करने से पहले मूल स्रोत से मिलाएँ।',
+ 'tab.treatments':'उपचार','tab.travel':'यात्रा','tab.avoid':'बचाव','tab.prevention':'रोकथाम',
+ 'guide.treatments':'उपचार','guide.travel':'यात्रा','guide.avoid':'बचाव','guide.prevention':'रोकथाम',
+ 'drawer.empty':'यहाँ कुछ रिपोर्ट नहीं हुआ है, इसलिए सलाह देने को कुछ नहीं है। उपचार, यात्रा और रोकथाम की जानकारी देखने के लिए कोई देश या रिपोर्ट सूची की कोई प्रविष्टि चुनें।',
+ 'drawer.auto':'स्वतः संकलित · असत्यापित','drawer.pending':'खोज जारी',
+ 'drawer.applied':'{src} की जानकारी दिखाई जा रही है — यहाँ इसे “{name}” के नाम से दर्ज किया गया है।',
+ 'drawer.noGuidance':'इस डेटा में {name} के लिए {kind} संबंधी जानकारी नहीं है।',
+ 'chip.symptoms':'लक्षण','chip.detection':'शुरुआती पहचान','chip.places':'किन जगहों से बचें','chip.other':'कुछ और पूछें',
+ 'chiphead.symptoms':'कैसे दिखता है','chiphead.detection':'पुष्टि कैसे होती है',
+ 'chiphead.places':'किससे दूर रहें','chiphead.other':'कुछ और पूछें',
+ 'chip.notLoaded':'इस बीमारी के लिए यह लोड नहीं हुआ।',
+ 'ask.intro':'WHO और CDC पर इस बीमारी को खोजता है। जवाब उन्हीं से आते हैं, इस साइट से नहीं।',
+ 'ask.placeholder':'जैसे: क्या {place} की यात्रा सुरक्षित है?','ask.who':'WHO पर खोजें','ask.cdc':'CDC पर खोजें',
+ 'age.today':'आज','age.yesterday':'कल','age.days':'{n} दिन पहले','age.weeks':'{n} सप्ताह पहले','age.months':'{n} माह पहले','age.nodate':'तिथि नहीं',
+ 'tip.none':'कोई रिपोर्ट नहीं','tip.national':'राष्ट्रीय आँकड़े','tip.figuresFor':'{region} के आँकड़े',
+ 'zoom.countries':'देश','zoom.states':'राज्य','zoom.cities':'शहर',
+ 'zoom.nextStates':'राज्यों के लिए और ज़ूम करें','zoom.nextCities':'शहरों के लिए और ज़ूम करें',
+ 'zoom.loading':'लोड हो रहा है','zoom.statesMissing':'राज्य डेटा नहीं मिला','crumb.world':'विश्व',
+ 'note.offline':'लाइव डेटा उपलब्ध नहीं है। साथ में रखी प्रति दिखाई जा रही है।',
+ 'note.old':'यह डेटा {n} दिन पुराना है। पाइपलाइन रुकी हो सकती है।',
+ 'note.admin1':'राज्य सीमाओं की फ़ाइल लोड नहीं हुई, इसलिए राज्य नहीं दिखाए जा सकते।',
+ 'note.cities':'शहरों की फ़ाइल लोड नहीं हुई, इसलिए शहर नहीं दिखाए जा सकते।',
+ 'foot.stat':'{n} रिपोर्टें · {c} स्थान · नवीनतम {age}',
+ 'cont.Africa':'अफ़्रीका','cont.Asia':'एशिया','cont.Europe':'यूरोप','cont.North America':'उत्तरी अमेरिका',
+ 'cont.South America':'दक्षिण अमेरिका','cont.Oceania':'ओशिनिया','cont.Antarctica':'अंटार्कटिका','cont.Oceans':'महासागर'
+},
+ar:{
+ 'title':'متتبّع الأوبئة والجوائح العالمي','mark':'متتبّع الجوائح',
+ 'tagline':'رصد مباشر لتفشّي الأمراض، مأخوذ من وكالات الصحة العامة ويُعاد رسمه مع كل تشغيل لخط البيانات. اختر اللغة والمظهر، ثم افتح الخريطة.',
+ 'entry.note':'هذا ليس نصيحة طبية. كل رقم على الخريطة يحمل تاريخ نشره من مصدره — تحقّق من التاريخ قبل التصرّف بناءً على أي رقم.',
+ 'language':'اللغة','appearance':'المظهر',
+ 'theme.light':'فاتح','theme.dark':'داكن','theme.system':'النظام',
+ 'theme.lightShort':'فاتح','theme.darkShort':'داكن','theme.systemShort':'تلقائي',
+ 'preparing':'جارٍ تجهيز الخريطة','enter':'افتح الخريطة','sources':'المصادر',
+ 'boot.boundaries':'تحميل الحدود','boot.indexing':'فهرسة الدول',
+ 'boot.applying':'تطبيق بيانات الرصد','boot.painting':'تلوين درجة الخطورة','boot.ready':'جاهز',
+ 'boot.failed':'تعذّر الوصول إلى Natural Earth. تحقّق من الشبكة ثم أعد التحميل.',
+ 'rail.reports':'التقارير','sheet.selection':'المحدَّد','focus.hide':'إخفاء اللوحات','focus.show':'إظهار اللوحات','back':'رجوع',
+ 'filter.minSeverity':'أدنى خطورة','filter.routine':'تضمين الرصد الأسبوعي الاعتيادي',
+ 'filter.hidden':'{n} مخفية','filter.shown':'{n} ظاهرة',
+ 'sort.newest':'الأحدث','sort.worst':'الأشد','sort.stale':'الأقدم',
+ 'feed.head':'{n} تقريرًا · الأحدث {age}','feed.headNoDates':'{n} تقريرًا · بلا تواريخ','feed.undated':'{n} بلا تاريخ',
+ 'feed.empty':'لا شيء عند درجة الخطورة {n} أو أعلى. اخفض العتبة لرؤية الأحداث الأهدأ.',
+ 'level.country':'دولة','level.state':'ولاية','level.city':'مدينة','tag.routine':'اعتيادي',
+ 'cases':'{n} حالة','nocount':'بلا عدد',
+ 'tier.0':'تحت السيطرة','tier.1':'متوسط','tier.2':'مرتفع','tier.3':'شديد','tier.4':'حرج','tier.none':'لا بيانات',
+ 'spine.title':'الدول حسب الخطورة','spine.hint':'اضغط على مستوى للتصفية',
+ 'legend.hatched':'التظليل المائل: لا توجد تقارير حالية من تلك المنطقة.',
+ 'legend.edge':'الحافة البيضاء: الحالات تتزايد بسرعة خلال آخر 7 أيام.',
+ 'legend.saturation':'كلما زاد عمق اللون زادت الحالات لكل 100000 نسمة.',
+ 'sel.world':'العالم','sel.continent':'قارة','sel.country':'دولة','sel.state':'ولاية أو محافظة','sel.city':'مدينة',
+ 'sel.index':'مؤشر الخطورة · 0–100','sel.newest':'أحدث رقم',
+ 'conf.high':'موثوقية إبلاغ عالية','conf.medium':'موثوقية إبلاغ متوسطة','conf.low':'موثوقية إبلاغ منخفضة',
+ 'sel.none':'لا توجد تقارير من هنا في مجموعة البيانات الحالية. هذا لا يعني انعدام الخطر — راجع موثوقية الإبلاغ أعلاه.',
+ 'stat.cases':'الحالات','stat.deaths':'الوفيات','stat.cfr':'معدل الوفاة',
+ 'undated':'بلا تاريخ','sourcePending':'المصدر قيد الإضافة','openSource':'فتح المصدر',
+ 'provisional':'رقم مبدئي — راجع المصدر الأصلي قبل نشره.',
+ 'tab.treatments':'العلاج','tab.travel':'السفر','tab.avoid':'تجنّب','tab.prevention':'الوقاية',
+ 'guide.treatments':'العلاج','guide.travel':'السفر','guide.avoid':'التجنّب','guide.prevention':'الوقاية',
+ 'drawer.empty':'لا شيء مُبلَّغ عنه هنا، فلا توجد إرشادات. اختر دولة أو عنصرًا من قائمة التقارير لعرض ملاحظات العلاج والسفر والوقاية.',
+ 'drawer.auto':'مُجمَّع آليًا · غير مُتحقَّق منه','drawer.pending':'جارٍ البحث',
+ 'drawer.applied':'تُعرض إرشادات {src} — هذا الموقع يسجّله باسم «{name}».',
+ 'drawer.noGuidance':'لا توجد إرشادات {kind} لـ {name} في هذه البيانات.',
+ 'chip.symptoms':'الأعراض','chip.detection':'الكشف المبكر','chip.places':'أماكن يجب تجنّبها','chip.other':'اسأل شيئًا آخر',
+ 'chiphead.symptoms':'كيف يبدو','chiphead.detection':'كيف يتم تأكيده',
+ 'chiphead.places':'ما يجب الابتعاد عنه','chiphead.other':'اسأل شيئًا آخر',
+ 'chip.notLoaded':'غير محمّل لهذا المرض.',
+ 'ask.intro':'يبحث عن هذا المرض في منظمة الصحة العالمية ومراكز CDC. الإجابات منهما، لا من هذا الموقع.',
+ 'ask.placeholder':'مثال: هل السفر إلى {place} آمن؟','ask.who':'ابحث في منظمة الصحة','ask.cdc':'ابحث في CDC',
+ 'age.today':'اليوم','age.yesterday':'أمس','age.days':'قبل {n} يوم','age.weeks':'قبل {n} أسبوع','age.months':'قبل {n} شهر','age.nodate':'بلا تاريخ',
+ 'tip.none':'لا نشاط مُبلَّغ عنه','tip.national':'أرقام وطنية','tip.figuresFor':'أرقام {region}',
+ 'zoom.countries':'الدول','zoom.states':'الولايات','zoom.cities':'المدن',
+ 'zoom.nextStates':'قرّب لعرض الولايات','zoom.nextCities':'قرّب لعرض المدن',
+ 'zoom.loading':'جارٍ التحميل','zoom.statesMissing':'بيانات الولايات مفقودة','crumb.world':'العالم',
+ 'note.offline':'البيانات المباشرة غير متاحة. تُعرض النسخة المرفقة.',
+ 'note.old':'عمر هذه البيانات {n} يومًا. قد يكون خط البيانات متوقفًا.',
+ 'note.admin1':'لم يُحمَّل ملف حدود الولايات، لذا لا يمكن عرض الولايات.',
+ 'note.cities':'لم يُحمَّل ملف المدن، لذا لا يمكن عرض المدن.',
+ 'foot.stat':'{n} تقريرًا · {c} موقعًا · الأحدث {age}',
+ 'cont.Africa':'أفريقيا','cont.Asia':'آسيا','cont.Europe':'أوروبا','cont.North America':'أمريكا الشمالية',
+ 'cont.South America':'أمريكا الجنوبية','cont.Oceania':'أوقيانوسيا','cont.Antarctica':'أنتاركتيكا','cont.Oceans':'المحيطات'
+}
+};
+
+let LANG = 'en';
+function pickLang(){
+  const saved = localStorage.getItem('pt.lang');
+  if(saved && STR[saved]) return saved;
+  for(const p of (navigator.languages || [navigator.language || 'en'])){
+    const base = String(p).toLowerCase().split('-')[0];
+    if(STR[base]) return base;
+  }
+  return 'en';
+}
+function t(key, vars){
+  const s = (STR[LANG] && STR[LANG][key]) ?? STR.en[key] ?? key;
+  return vars ? s.replace(/\{(\w+)\}/g, (_,k)=> vars[k] ?? '') : s;
+}
+function setLang(id, repaint = true){
+  if(!STR[id]) id = 'en';
+  LANG = id;
+  localStorage.setItem('pt.lang', id);
+  const meta = LANGS.find(l => l.id === id) || {};
+  document.documentElement.lang = id;
+  document.documentElement.dir = meta.dir || 'ltr';
+  paintStatic();
+  if(repaint && typeof refresh === 'function' && S.countries) refresh();
+}
+/* Anything with data-i18n in the markup is owned by the dictionary. */
+function paintStatic(){
+  document.querySelectorAll('[data-i18n]').forEach(el=>{
+    el.textContent = t(el.dataset.i18n);
+  });
+  document.title = t('title');
+  const sel = document.getElementById('langsel');
+  if(sel){
+    sel.innerHTML = LANGS.map(l=>`<option value="${l.id}"${l.id===LANG?' selected':''}>${l.label}</option>`).join('');
+  }
+  const grid = document.getElementById('langgrid');
+  if(grid){
+    grid.innerHTML = LANGS.map(l=>`<button data-lang="${l.id}" class="${l.id===LANG?'on':''}" lang="${l.id}">${l.label}</button>`).join('');
+    grid.querySelectorAll('button').forEach(b=> b.onclick = ()=> setLang(b.dataset.lang));
+  }
+  const esrc = document.getElementById('esrc');
+  if(esrc) esrc.textContent = t('sources') + ' — ' + FEEDS.join(' · ');
+  const fsrc = document.getElementById('footsrc');
+  if(fsrc) fsrc.textContent = FEEDS.join(' · ');
+  const fbtn = document.getElementById('focusbtn');
+  if(fbtn) fbtn.textContent = document.body.classList.contains('focus') ? t('focus.show') : t('focus.hide');
+  const ebtn = document.getElementById('enterbtn');
+  if(ebtn) ebtn.querySelector('span').textContent = ebtn.disabled ? t('preparing') : t('enter');
+  paintEntryKey();
+}
+const FEEDS = ['WHO','WHO FluNet','ECDC','PAHO','Africa CDC','US CDC','NICD'];
+
+/* ── 0b. THEME ────────────────────────────────────────────────────────────
+   The CSS half lives in <style> under html[data-theme]. This is the half the
+   CSS cannot reach: the globe texture, the border lines, the star field and
+   the tier hexes that get written into inline styles.                       */
+
+const PALETTES = {
+  dark:{
+    clear:0x080A0B, ocean:'#0D1315', graticule:'rgba(150,175,185,.05)',
+    hatchBg:'#121A1D', hatchLine:'#263036', blend:[13,19,21],
+    border:0x9FB3BE, borderOp:0.38, hot:0xFFFFFF, hotOp:0.9,
+    admin1:0xB9C8D1, admin1Op:0.55, city:0xEDE9E0,
+    star:0x8E9CA6, starOp:0.45, atmo:[0.24,0.42,0.62], atmoStr:0.85,
+    tiers:['#21A45C','#D0A02C','#E8743B','#D93A3A','#8E2020'], nodata:'#3A4046',
+    ok:'#21A45C', warn:'#D0A02C', mid:'#E8743B', bad:'#D93A3A', flat:'#9C978C', dim:'#6C6860'
+  },
+  light:{
+    clear:0xC6CAC7, ocean:'#BCC3C2', graticule:'rgba(40,55,55,.07)',
+    hatchBg:'#CDD1CB', hatchLine:'#AEB4AD', blend:[188,195,194],
+    border:0x4B5158, borderOp:0.5, hot:0x1A1D20, hotOp:0.85,
+    admin1:0x6B7078, admin1Op:0.45, city:0x23262A,
+    star:0xB5B2A8, starOp:0, atmo:[0.40,0.46,0.48], atmoStr:0.28,
+    tiers:['#1B7F45','#8F6710','#BC5320','#AE2320','#761A1A'], nodata:'#A6A59A',
+    ok:'#1B7F45', warn:'#8F6710', mid:'#BC5320', bad:'#AE2320', flat:'#575A52', dim:'#7E8077'
+  }
+};
+let THEME_PREF = localStorage.getItem('pt.theme') || 'system';
+let PAL = PALETTES.dark;
+
+const mqDark = matchMedia('(prefers-color-scheme: dark)');
+function resolveTheme(){ return THEME_PREF === 'system' ? (mqDark.matches ? 'dark' : 'light') : THEME_PREF; }
+
+function setTheme(pref, repaint = true){
+  THEME_PREF = pref;
+  localStorage.setItem('pt.theme', pref);
+  const resolved = resolveTheme();
+  document.documentElement.dataset.theme = resolved;
+  PAL = PALETTES[resolved];
+  TIERS.forEach((tier,i)=> tier.hex = PAL.tiers[i]);
+  NODATA = PAL.nodata;
+  document.querySelectorAll('[data-theme-set]').forEach(b=>
+    b.classList.toggle('on', b.dataset.themeSet === pref));
+  paintEntryKey();
+  if(repaint) repaintTheme();
+}
+mqDark.addEventListener('change', ()=>{ if(THEME_PREF === 'system') setTheme('system'); });
+
+/* Push the new palette through everything WebGL is holding. */
+function repaintTheme(){
+  if(typeof renderer === 'undefined' || !renderer) return;
+  renderer.setClearColor(PAL.clear, 1);
+  if(atmo){ atmo.material.uniforms.uColor.value.fromArray(PAL.atmo); atmo.material.uniforms.uStrength.value = PAL.atmoStr; }
+  if(stars){ stars.material.color.setHex(PAL.star); stars.material.opacity = PAL.starOp; stars.visible = PAL.starOp > 0; }
+  if(borderLines){ borderLines.material.color.setHex(PAL.border); borderLines.material.opacity = PAL.borderOp; }
+  if(hotspotLines){ hotspotLines.material.color.setHex(PAL.hot); hotspotLines.material.opacity = PAL.hotOp; }
+  if(admin1Lines) admin1Lines.material.color.setHex(PAL.admin1);
+  if(cityPoints) cityPoints.material.color.setHex(PAL.city);
+  hatchPattern = null;                 // rebuilt with the new palette on next paint
+  paint();
+  if(S.countries) refresh();
+}
+
+/* The severity key on the entry screen doubles as the legend, so people learn
+   the ramp before they ever look at the globe. */
+function paintEntryKey(){
+  const box = document.getElementById('ekey');
+  if(!box) return;
+  const ranges = ['0–19','20–39','40–59','60–79','80–100'];
+  box.innerHTML = PAL.tiers.map((hex,i)=>`
+    <div class="er">
+      <span class="eswatch" style="background:${hex}"></span>
+      <span class="ename">${esc(t('tier.'+i))}</span>
+      <span class="erange">${ranges[i]}</span>
+    </div>`).join('');
+}
+
+/* ── 1. SEVERITY ENGINE ───────────────────────────────────────────────────
+   Implements the 0–100 index from the project spec: cases per 100k,
+   case fatality rate, and 7-day growth. Tune the weights here and the whole
+   map recolours — no other file needs to change. */
+
+const WEIGHTS = { per100k:0.45, cfr:0.30, growth:0.25 };
+
+function severityOf(d){
+  if(d.severity != null) return clamp(d.severity,0,100);   // explicit override
+  const inputs = [d.per100k, d.cfr, d.growth7d].filter(v => v != null);
+  if(!inputs.length) return null;                          // NO DATA — never 0
+  // log scale: 1/100k ≈ 20, 10 ≈ 47, 100 ≈ 73, 1000 ≈ 100
+  const a = d.per100k  != null ? clamp(Math.log10(d.per100k + 1) / 3 * 100, 0, 100) : null;
+  // 10% CFR saturates the scale
+  const b = d.cfr      != null ? clamp(d.cfr / 10 * 100, 0, 100) : null;
+  // +50% week-on-week saturates
+  const c = d.growth7d != null ? clamp((d.growth7d + 10) / 60 * 100, 0, 100) : null;
+  let num = 0, den = 0;
+  if(a!=null){ num += a*WEIGHTS.per100k; den += WEIGHTS.per100k; }
+  if(b!=null){ num += b*WEIGHTS.cfr;     den += WEIGHTS.cfr;     }
+  if(c!=null){ num += c*WEIGHTS.growth;  den += WEIGHTS.growth;  }
+  return den ? Math.round(num/den) : null;
+}
+
+const TIERS = [
+  {max:19,  name:'contained', css:'--s0', hex:'#16A34A'},
+  {max:39,  name:'moderate',  css:'--s1', hex:'#CA8A04'},
+  {max:59,  name:'high',      css:'--s2', hex:'#EA580C'},
+  {max:79,  name:'severe',    css:'--s3', hex:'#DC2626'},
+  {max:100, name:'critical',  css:'--s4', hex:'#7F1D1D'}
+];
+let NODATA = '#39424F';   // overwritten by setTheme()
+function tierOf(s){ return s==null ? {name:'no data',hex:NODATA} : TIERS.find(t=>s<=t.max); }
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+
+/* Roll child entities up to a parent. 60% worst-case, 40% population-weighted —
+   so one critical province lifts the country without a big calm neighbour
+   burying it. */
+function rollup(children){
+  const scored = children.filter(c => c.severity != null);
+  if(!scored.length) return null;
+  const worst = Math.max(...scored.map(c=>c.severity));
+  let wsum=0, psum=0;
+  scored.forEach(c=>{ const p=c.pop||1; wsum += c.severity*p; psum += p; });
+  return Math.round(0.6*worst + 0.4*(wsum/psum));
+}
+
+/* ── 2. SEED DATA ─────────────────────────────────────────────────────────
+   Every figure carries a source and an as-of date. `provisional:true` means
+   the number came from a secondary summary and must be re-verified against
+   the primary feed before it goes public.
+
+   Keys: countries = ISO-3166 alpha-3. Subnational = "ISO3:Region Name".
+   Cities = "ISO3:City Name". This is exactly the shape your API should emit. */
+
+const SEED = {
+  updated: '2026-07-27T00:00:00Z',
+
+  countries: {
+    COD:{ conf:'low', diseases:[
+      {name:'Ebola (Bundibugyo virus)', cases:1262, deaths:241, cfr:19.1, growth7d:22, per100k:1.2,
+       asOf:'2026-05-29', source:'WHO PHEIC declaration, 16 May 2026', provisional:true,
+       url:'https://www.who.int/emergencies/disease-outbreak-news'},
+      {name:'Cholera', cases:null, deaths:null, asOf:'2026-05-31', source:'WHO Global Cholera & AWD dashboard',
+       url:'https://who-global-cholera-and-awd-dashboard-1-who.hub.arcgis.com/pages/data-download'}
+    ]},
+    UGA:{ conf:'medium', diseases:[
+      {name:'Ebola (Bundibugyo virus)', cases:null, deaths:null, severity:58, growth7d:9,
+       asOf:'2026-07-14', source:'Africa CDC BVD situational report', provisional:true,
+       url:'https://khub.africacdc.org/'}
+    ]},
+    BRA:{ conf:'high', diseases:[
+      {name:'Dengue', cases:811000, deaths:null, per100k:383, growth7d:-8,
+       asOf:'2026-05-17', source:'PAHO PLISA, through EW20', provisional:true,
+       url:'https://www.paho.org/en/arbo-portal/dengue-data-and-analysis'}
+    ]},
+    BOL:{ conf:'medium', diseases:[
+      {name:'Dengue', cases:null, per100k:389, growth7d:-5,
+       asOf:'2026-05-17', source:'PAHO PLISA', provisional:true,
+       url:'https://www.paho.org/en/arbo-portal/dengue-data-and-analysis'},
+      {name:'Yellow fever', cases:34, deaths:15, cfr:44.1,
+       asOf:'2026-02-14', source:'PAHO — combined BOL/COL/PER/VEN, first 7 weeks 2026', provisional:true,
+       url:'https://www.paho.org/en/epidemiological-alerts-and-updates'}
+    ]},
+    PER:{ conf:'medium', diseases:[
+      {name:'Yellow fever', severity:41, asOf:'2026-02-14', source:'PAHO epidemiological alerts', provisional:true,
+       url:'https://www.paho.org/en/epidemiological-alerts-and-updates'},
+      {name:'Oropouche fever', cases:600, asOf:'2025-12-31', source:'PAHO — Loreto region, 2024 cumulative', provisional:true,
+       url:'https://www.paho.org/en/epidemiological-alerts-and-updates'}
+    ]},
+    LKA:{ conf:'high', diseases:[
+      {name:'Dengue', cases:7916, per100k:36, growth7d:41,
+       asOf:'2026-07-05', source:'WHO SEARO epidemiological bulletin, week 27', provisional:true,
+       url:'https://www.who.int/southeastasia/health-topics/emergencies'}
+    ]},
+    BGD:{ conf:'medium', diseases:[
+      {name:'Dengue', cases:2907, per100k:1.7, growth7d:14,
+       asOf:'2026-07-12', source:'WHO SEARO epidemiological bulletin, week 28', provisional:true,
+       url:'https://www.who.int/southeastasia/health-topics/emergencies'}
+    ]},
+    THA:{ conf:'high', diseases:[
+      {name:'Dengue', cases:938, per100k:1.3, growth7d:3,
+       asOf:'2026-07-12', source:'WHO SEARO epidemiological bulletin, week 28', provisional:true,
+       url:'https://www.who.int/southeastasia/health-topics/emergencies'},
+      {name:'Mpox', cases:5, severity:12,
+       asOf:'2026-07-12', source:'WHO SEARO epidemiological bulletin, weeks 27–28', provisional:true,
+       url:'https://www.who.int/southeastasia/health-topics/emergencies'}
+    ]},
+    IND:{ conf:'medium', diseases:[
+      {name:'Dengue', cases:6625, per100k:0.5, growth7d:6,
+       asOf:'2026-06-30', source:'WHO SEARO epidemiological bulletin, June', provisional:true,
+       url:'https://www.who.int/southeastasia/health-topics/emergencies'},
+      {name:'Nipah virus', cases:1, deaths:null, severity:31,
+       asOf:'2026-06-30', source:'WHO SEARO epidemiological bulletin', provisional:true,
+       url:'https://www.who.int/southeastasia/health-topics/emergencies'}
+    ]},
+    NPL:{ conf:'medium', diseases:[
+      {name:'Dengue', cases:292, per100k:1.0,
+       asOf:'2026-06-30', source:'WHO SEARO epidemiological bulletin, June', provisional:true,
+       url:'https://www.who.int/southeastasia/health-topics/emergencies'}
+    ]},
+    MDV:{ conf:'high', diseases:[
+      {name:'Measles', cases:144, deaths:0, per100k:26, growth7d:18,
+       asOf:'2026-07-13', source:'WHO SEARO — Greater Malé', provisional:true,
+       url:'https://www.who.int/southeastasia/health-topics/emergencies'}
+    ]},
+    ZAF:{ conf:'high', diseases:[
+      {name:'Measles', cases:null, asOf:null, source:'NICD weekly situation reports — awaiting pipeline',
+       url:'https://www.nicd.ac.za/'},
+      {name:'Diphtheria', cases:null, asOf:null, source:'NICD weekly situation reports — awaiting pipeline',
+       url:'https://www.nicd.ac.za/'}
+    ]}
+  },
+
+  /* Subnational tier — appears only when the camera is close enough. */
+  admin1: {
+    'ZAF:Gauteng':      { severity:34, pop:16000000, conf:'high',
+      diseases:[{name:'Measles', cases:null, source:'NICD weekly situation report', url:'https://www.nicd.ac.za/'}] },
+    'ZAF:Western Cape': { severity:21, pop:7400000, conf:'high',
+      diseases:[{name:'Measles', cases:null, source:'NICD weekly situation report', url:'https://www.nicd.ac.za/'}] },
+    'ZAF:KwaZulu-Natal':{ severity:29, pop:11500000, conf:'high',
+      diseases:[{name:'Measles', cases:null, source:'NICD weekly situation report', url:'https://www.nicd.ac.za/'}] },
+    'COD:Ituri':        { severity:91, pop:5600000, conf:'low',
+      diseases:[{name:'Ebola (Bundibugyo virus)', cases:null, growth7d:26, cfr:19.1,
+        source:'Africa CDC BVD situational report, 14 Jul 2026', provisional:true, url:'https://khub.africacdc.org/'}] },
+    'COD:Nord-Kivu':    { severity:74, pop:8000000, conf:'low',
+      diseases:[{name:'Ebola (Bundibugyo virus)', cases:null, growth7d:15,
+        source:'Africa CDC BVD situational report', provisional:true, url:'https://khub.africacdc.org/'}] },
+    'BRA:São Paulo':    { severity:47, pop:44000000, conf:'high',
+      diseases:[{name:'Dengue', cases:null, per100k:410, source:'PAHO PLISA subnational', url:'https://www.paho.org/plisa'}] },
+    'BRA:Minas Gerais': { severity:55, pop:21000000, conf:'high',
+      diseases:[{name:'Dengue', cases:null, per100k:520, source:'PAHO PLISA subnational', url:'https://www.paho.org/plisa'}] }
+  },
+
+  /* City tier. Global city-level case counts do not exist as a single feed —
+     these are outbreak *event locations*, which do. See guide §6. */
+  cities: {
+    'COD:Bunia':      { lat:1.5586,  lon:30.2470, severity:93, conf:'low',
+      diseases:[{name:'Ebola (Bundibugyo virus)', cases:null, source:'WHO Health Emergency Dashboard event location',
+        url:'https://extranet.who.int/publicemergency/'}] },
+    'COD:Kinshasa':   { lat:-4.4419, lon:15.2663, severity:44, conf:'medium',
+      diseases:[{name:'Ebola (Bundibugyo virus)', cases:null, source:'WHO Health Emergency Dashboard event location',
+        url:'https://extranet.who.int/publicemergency/'}] },
+    'UGA:Kampala':    { lat:0.3476,  lon:32.5825, severity:61, conf:'medium',
+      diseases:[{name:'Ebola (Bundibugyo virus)', cases:null, source:'WHO Health Emergency Dashboard event location',
+        url:'https://extranet.who.int/publicemergency/'}] },
+    'MDV:Malé':       { lat:4.1755,  lon:73.5093, severity:38, conf:'high',
+      diseases:[{name:'Measles', cases:144, source:'WHO SEARO — Greater Malé', provisional:true,
+        url:'https://www.who.int/southeastasia/health-topics/emergencies'}] },
+    'BRA:São Paulo':  { lat:-23.5505,lon:-46.6333,severity:46, conf:'high',
+      diseases:[{name:'Dengue', cases:null, source:'PAHO PLISA', url:'https://www.paho.org/plisa'}] },
+    'ZAF:Johannesburg':{lat:-26.2041,lon:28.0473, severity:33, conf:'high',
+      diseases:[{name:'Measles', cases:null, source:'NICD weekly situation report', url:'https://www.nicd.ac.za/'}] }
+  },
+
+  /* Bottom-right drawer content, keyed by disease name.
+
+     This is only the offline snapshot — enough to make the drawer work if the
+     scraper is unreachable. The live version comes from /api/outbreaks, which
+     carries a full entry for every disease in the dataset and auto-compiles one
+     for anything new. See api/guidance.js. */
+  guidance: {
+    'Ebola (Bundibugyo virus)':{
+      treatments:['<strong>Ervebo (rVSV-ZEBOV)</strong> is licensed for Zaire ebolavirus and is <em>not</em> expected to protect against Bundibugyo.','<strong>mAb114 and Inmazeb</strong> are similarly Zaire-specific; efficacy against Bundibugyo is unestablished.','Supportive care — fluid and electrolyte management — remains the mainstay.'],
+      travel:['WHO and Africa CDC both advise against travel or trade restrictions; use enhanced screening instead.','Eighteen countries have implemented travel measures as of July 2026.','Exit screening operates at Bunia and Kampala.'],
+      avoid:['Funeral and burial practices involving contact with the body.','Bushmeat handling and preparation.','Unprotected care of a sick household member.'],
+      prevention:['Report fever with recent contact history immediately.','Handwashing with soap or chlorine solution.','Health workers: full PPE plus buddy-checked doffing.'],
+      symptoms:['Sudden fever, severe fatigue, muscle pain, headache and sore throat 2–21 days after exposure.','Then vomiting, diarrhoea, rash and impaired kidney and liver function; bleeding in some patients.'],
+      detection:['Species-specific RT-PCR on blood — a generic filovirus assay will not separate Bundibugyo from Zaire, and that distinction decides which treatments are worth giving.'],
+      source:'WHO — Ebola virus disease fact sheet', url:'https://www.who.int/news-room/fact-sheets/detail/ebola-virus-disease'
+    },
+    'Dengue':{
+      treatments:['No specific antiviral. Paracetamol for fever.','<strong>Avoid NSAIDs</strong> — ibuprofen and aspirin raise bleeding risk.','Qdenga (TAK-003) is available in some countries; check national policy.'],
+      travel:['Risk concentrates in the rainy season across the Americas and South-East Asia.','Brazil has all four serotypes circulating at once, which raises severe-disease risk on reinfection.'],
+      avoid:['Standing water within 100m of where you sleep.','Being outdoors unprotected at dawn and dusk, when Aedes aegypti bites.'],
+      prevention:['Repellent containing DEET, picaridin or IR3535.','Window screens and treated bed nets.','Empty and scrub water containers weekly.'],
+      symptoms:['Sudden high fever, severe headache, pain behind the eyes, muscle and joint pain, rash.','Severe dengue begins 24–48 hours after the fever drops — that is the dangerous window, not the fever itself.'],
+      detection:['NS1 antigen or PCR from day 1 to about day 5; IgM serology from day 5 onward.','A daily full blood count tracks the platelet drop that flags severe disease.'],
+      source:'WHO — Dengue and severe dengue fact sheet', url:'https://www.who.int/news-room/fact-sheets/detail/dengue-and-severe-dengue'
+    },
+    'Measles':{
+      treatments:['No antiviral. Vitamin A supplementation reduces mortality in children.','Treat secondary bacterial infections as they arise.'],
+      travel:['Confirm two documented MMR doses 6–8 weeks before departure.','Infants 6–11 months may need an early dose for outbreak areas.'],
+      avoid:['Enclosed crowded settings during an active outbreak — the virus stays airborne up to two hours.'],
+      prevention:['Two-dose MMR is roughly 97% effective.','Isolate cases for four days after rash onset.'],
+      symptoms:['Fever, cough, runny nose and red watery eyes for 2–4 days first.','Koplik spots inside the cheek appear before the rash and are diagnostic.','Rash starts at the hairline and spreads downward.'],
+      detection:['Measles-specific IgM in serum, or PCR on a throat swab or urine.','Swab early — PCR sensitivity falls off after about 3 days of rash.'],
+      source:'WHO — Measles fact sheet', url:'https://www.who.int/news-room/fact-sheets/detail/measles'
+    },
+    'Cholera':{
+      treatments:['Oral rehydration salts resolve most cases.','IV fluids for severe dehydration.','Antibiotics only for severe cases, guided by local resistance patterns.'],
+      travel:['Oral cholera vaccine for travel to active transmission areas.'],
+      avoid:['Untreated water, ice, and raw shellfish.','Food from street vendors in affected zones.'],
+      prevention:['Boil it, cook it, peel it, or leave it.','Handwashing with soap after latrine use.'],
+      symptoms:['Sudden profuse watery diarrhoea, often described as rice-water, sometimes with vomiting.','No fever and no cramping in classic cases. Severe dehydration can kill within hours.'],
+      detection:['Rapid dipstick test on stool for screening; culture confirms and gives antibiotic sensitivity.','In a declared outbreak, rehydration starts on clinical grounds — testing second.'],
+      source:'WHO — Cholera fact sheet', url:'https://www.who.int/news-room/fact-sheets/detail/cholera'
+    },
+    'Yellow fever':{
+      treatments:['No antiviral. Supportive care only.','Avoid aspirin and NSAIDs.'],
+      travel:['A single vaccine dose gives lifelong protection.','Many countries require a certificate for entry from endemic areas.','Spread now extends beyond the traditional Amazon basin.'],
+      avoid:['Unvaccinated travel to endemic zones.','Daytime exposure in forested areas.'],
+      prevention:['Vaccinate at least 10 days before travel.','Repellent and long sleeves.'],
+      symptoms:['First phase: fever, muscle pain, headache, nausea.','About 15% enter a toxic phase within 24 hours of apparent recovery: jaundice, dark urine, abdominal pain, bleeding.'],
+      detection:['PCR early in illness; serology later, though it cross-reacts with dengue and with vaccination.','Jaundice plus fever plus forest exposure in an endemic country is treated as yellow fever until proven otherwise.'],
+      source:'WHO — Yellow fever fact sheet', url:'https://www.who.int/news-room/fact-sheets/detail/yellow-fever'
+    },
+    _default:{
+      treatments:['Looking this one up — the scraper had not seen this disease before.'],
+      travel:['Check the CDC travel notices and the WHO regional advisory for this location.'],
+      avoid:['Follow the precautions in the source bulletin linked above.'],
+      prevention:['Follow national public-health guidance for this outbreak.'],
+      symptoms:['Not loaded. See the source bulletin.'],
+      detection:['Not loaded. See the source bulletin.'],
+      source:'WHO — Disease Outbreak News', url:'https://www.who.int/emergencies/disease-outbreak-news'
+    },
+    _disclaimer:'General public-health information drawn from WHO and CDC guidance. Not medical advice — follow your national health authority.'
+  }
+};
+
+/* ── 3. GEOMETRY SOURCES ──────────────────────────────────────────────────
+   Natural Earth via GitHub raw + jsDelivr mirror. Both send permissive CORS
+   headers, so the browser can fetch them directly. Your *epidemiological*
+   feeds cannot be fetched this way — see the guide. */
+
+const GEO = {
+  countries:['https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson',
+             'https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_110m_admin_0_countries.geojson'],
+  /* Bundled with the project. Natural Earth's worldwide admin-1 file is 38 MB,
+     which is far too heavy for a browser, so it was simplified down to 1.7 MB
+     (3,978 regions across 218 countries) and shipped in public/data/.
+     Cities are the major ones only — capitals, megacities and pop >= 300k. */
+  admin1:   ['data/admin1.json'],
+  cities:   ['data/cities.json']
+};
+
+async function fetchFirst(urls){
+  let err;
+  for(const u of urls){
+    try{ const r = await fetch(u); if(r.ok) return await r.json(); err = new Error(r.status); }
+    catch(e){ err = e; }
+  }
+  throw err;
+}
+
+/* ── 4. STATE ─────────────────────────────────────────────────────────── */
+
+const S = {
+  countries:null, admin1:null, cities:null,
+  byISO:new Map(), continents:new Map(),
+  view:{level:'world', continent:null, iso:null, region:null, city:null},
+  lod:'world',          // world | region | city
+  hover:null, threshold:0, tab:'treatments', sort:'recent', showRoutine:false,
+  disease:null,         // which disease the bottom-right drawer is describing
+  chip:null,            // which FAQ chip is expanded, if any
+  entities:new Map()    // resolved severity per key
+};
+
+const CONTINENT_LABEL = {
+  'Africa':'Africa','Asia':'Asia','Europe':'Europe',
+  'North America':'North America','South America':'South America',
+  'Oceania':'Oceania','Antarctica':'Antarctica','Seven seas (open ocean)':'Oceans'
+};
+
+/* ── 5. RESOLVE DATA → SEVERITY PER ENTITY ────────────────────────────── */
+
+function diseaseSeverity(dis){
+  const s = severityOf(dis);
+  return s;
+}
+function entitySeverity(rec){
+  if(!rec) return null;
+  if(rec.severity != null) return clamp(rec.severity,0,100);
+  if(!rec.diseases) return null;
+  const vals = rec.diseases.map(diseaseSeverity).filter(v=>v!=null);
+  return vals.length ? Math.max(...vals) : null;   // worst active disease drives the colour
+}
+function maxGrowth(rec){
+  if(!rec || !rec.diseases) return null;
+  const g = rec.diseases.map(d=>d.growth7d).filter(v=>v!=null);
+  return g.length ? Math.max(...g) : null;
+}
+function maxPer100k(rec){
+  if(!rec || !rec.diseases) return null;
+  const p = rec.diseases.map(d=>d.per100k).filter(v=>v!=null);
+  return p.length ? Math.max(...p) : null;
+}
+
+function buildEntities(){
+  S.entities.clear();
+  // countries
+  for(const [iso,rec] of Object.entries(SEED.countries)){
+    S.entities.set(iso, {key:iso, level:'country', sev:entitySeverity(rec), rec});
+  }
+  // admin1
+  for(const [k,rec] of Object.entries(SEED.admin1)){
+    S.entities.set(k, {key:k, level:'admin1', sev:entitySeverity(rec), rec});
+  }
+  // cities
+  for(const [k,rec] of Object.entries(SEED.cities)){
+    S.entities.set(k, {key:k, level:'city', sev:entitySeverity(rec), rec});
+  }
+  // continents = rollup of their countries
+  for(const [cont, isos] of S.continents){
+    const kids = isos.map(i=>{
+      const e = S.entities.get(i);
+      return e ? {severity:e.sev, pop:S.byISO.get(i)?.pop || 1} : null;
+    }).filter(Boolean);
+    const sev = rollup(kids);
+    S.entities.set('C:'+cont, {key:'C:'+cont, level:'continent', sev, rec:{
+      diseases: aggregateDiseases(isos), conf: worstConf(isos)
+    }});
+  }
+}
+function aggregateDiseases(isos){
+  const m = new Map();
+  isos.forEach(iso=>{
+    const rec = SEED.countries[iso]; if(!rec) return;
+    rec.diseases.forEach(d=>{
+      const cur = m.get(d.name) || {name:d.name, cases:0, deaths:0, countries:0, source:d.source, url:d.url, asOf:d.asOf, provisional:d.provisional, _any:false};
+      if(d.cases != null){ cur.cases += d.cases; cur._any = true; }
+      if(d.deaths != null) cur.deaths += d.deaths;
+      cur.countries++;
+      if(d.asOf && (!cur.asOf || d.asOf > cur.asOf)) cur.asOf = d.asOf;
+      m.set(d.name, cur);
+    });
+  });
+  return [...m.values()].map(d=>({...d, cases:d._any?d.cases:null, deaths:d.deaths||null}))
+    .sort((a,b)=>(b.cases||0)-(a.cases||0));
+}
+function worstConf(isos){
+  const order = {low:0, medium:1, high:2};
+  let w = null;
+  isos.forEach(i=>{ const c = SEED.countries[i]?.conf; if(c && (w===null || order[c] < order[w])) w = c; });
+  return w;
+}
+
+/* ── 6. EQUIRECTANGULAR TEXTURE PAINTER ───────────────────────────────────
+   The globe is a sphere wearing a canvas. Repainting the canvas recolours
+   the world; we only repaint when the zoom tier changes or data arrives. */
+
+let TEX_W = 4096, TEX_H = 2048;
+const tex = document.createElement('canvas');
+tex.width = TEX_W; tex.height = TEX_H;
+const tx = tex.getContext('2d');
+
+function projX(lon){ return (lon + 180) / 360 * TEX_W; }
+function projY(lat){ return (90 - lat) / 180 * TEX_H; }
+
+function tracePoly(ctx, coords){
+  coords.forEach(ring=>{
+    ring.forEach(([lon,lat],i)=>{
+      const x = projX(lon), y = projY(lat);
+      i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+    });
+    ctx.closePath();
+  });
+}
+function traceFeature(ctx, geom){
+  ctx.beginPath();
+  if(geom.type === 'Polygon') tracePoly(ctx, geom.coordinates);
+  else if(geom.type === 'MultiPolygon') geom.coordinates.forEach(p=>tracePoly(ctx,p));
+}
+
+/* Diagonal hatch = "we have no reporting from here." Visually distinct from
+   green, because the spec is explicit that silence must not read as safety. */
+let hatchPattern = null;
+function makeHatch(){
+  const c = document.createElement('canvas'); c.width = c.height = 12;
+  const g = c.getContext('2d');
+  g.fillStyle = PAL.hatchBg; g.fillRect(0,0,12,12);
+  g.strokeStyle = PAL.hatchLine; g.lineWidth = 1.6;
+  g.beginPath(); g.moveTo(-3,9); g.lineTo(9,-3); g.moveTo(3,15); g.lineTo(15,3); g.stroke();
+  hatchPattern = tx.createPattern(c,'repeat');
+}
+
+function fillFor(sev, per100k){
+  if(sev == null) return hatchPattern;
+  const t = tierOf(sev);
+  // saturation carries concentration: sparse zones stay pale, dense ones glow
+  const dens = per100k == null ? 0.45 : clamp(Math.log10(per100k+1)/3, 0.25, 1);
+  return shade(t.hex, 0.35 + dens*0.65);
+}
+function shade(hex, a){
+  const n = parseInt(hex.slice(1),16);
+  const r = n>>16, g = (n>>8)&255, b = n&255;
+  // blend toward the ocean colour rather than using alpha, so overlaps stay clean
+  const bg = PAL.blend;
+  return `rgb(${Math.round(bg[0]+(r-bg[0])*a)},${Math.round(bg[1]+(g-bg[1])*a)},${Math.round(bg[2]+(b-bg[2])*a)})`;
+}
+
+function paint(){
+  if(!hatchPattern) makeHatch();
+  // ocean
+  tx.fillStyle = PAL.ocean; tx.fillRect(0,0,TEX_W,TEX_H);
+
+  // graticule — quiet, gives the sphere readable structure when zoomed out
+  tx.strokeStyle = PAL.graticule; tx.lineWidth = 1.5;
+  for(let lon=-180; lon<=180; lon+=15){ tx.beginPath(); tx.moveTo(projX(lon),0); tx.lineTo(projX(lon),TEX_H); tx.stroke(); }
+  for(let lat=-75; lat<=75; lat+=15){ tx.beginPath(); tx.moveTo(0,projY(lat)); tx.lineTo(TEX_W,projY(lat)); tx.stroke(); }
+
+  if(!S.countries) { commitTexture(); return; }
+
+  // ── countries: fills only. Borders are drawn as vector lines (§6b) so they
+  // stay crisp when you zoom. A soft glow stays in the texture because a glow
+  // is supposed to be blurry.
+  S.countries.features.forEach(f=>{
+    const iso = isoOf(f);
+    const e = S.entities.get(iso);
+    const rec = SEED.countries[iso];
+    traceFeature(tx, f.geometry);
+    tx.fillStyle = fillFor(e?.sev ?? null, maxPer100k(rec));
+    tx.fill('evenodd');
+
+    const g = maxGrowth(rec);
+    if(g != null && g >= 15){
+      tx.save();
+      tx.strokeStyle = PAL.hotGlow || 'rgba(255,255,255,.30)';
+      tx.lineWidth = 14;
+      tx.filter = 'blur(6px)';
+      tx.stroke();
+      tx.restore();
+    }
+  });
+
+  // ── state / province fills, wherever we actually have data for them.
+  // Boundaries are worldwide, but only regions with surveillance data get a
+  // fill. Everything else keeps the country colour beneath it.
+  if(S.lod !== 'world' && S.admin1){
+    for(const [iso, regions] of Object.entries(S.admin1)){
+      for(const [name, rings] of regions){
+        const e = S.entities.get(iso + ':' + name);
+        if(!e || e.sev == null) continue;
+        tx.beginPath();
+        for(const flat of rings){
+          for(let i = 0; i + 1 < flat.length; i += 2){
+            const x = projX(flat[i]), y = projY(flat[i+1]);
+            i ? tx.lineTo(x, y) : tx.moveTo(x, y);
+          }
+          tx.closePath();
+        }
+        tx.fillStyle = fillFor(e.sev, maxPer100k(e.rec));
+        tx.fill('evenodd');
+      }
+    }
+  }
+
+  commitTexture();
+}
+let texture = null;
+function commitTexture(){ if(texture) texture.needsUpdate = true; }
+
+function isoOf(f){
+  const p = f.properties;
+  let iso = p.ADM0_A3 || p.adm0_a3 || p.ISO_A3 || p.iso_a3;
+  if(!iso || iso === '-99') iso = (p.ADMIN || p.admin || '').slice(0,3).toUpperCase();
+  return iso;
+}
+function nameOf(f){ const p=f.properties; return p.ADMIN || p.admin || p.NAME || p.name || 'Unknown'; }
+function contOf(f){ const p=f.properties; return p.CONTINENT || p.continent || 'Unknown'; }
+
+/* ── 6b. CRISP BORDERS + ZOOM-DRIVEN DETAIL ───────────────────────────────
+   Borders are real 3D line geometry sitting just above the sphere, so they
+   stay sharp at any zoom instead of turning into magnified pixels.
+
+   Three layers, each fading in as you get closer:
+
+     always      country outlines
+     z < 2.60    state / province lines   (worldwide, 218 countries)
+     z < 1.95    major city markers       (capitals, megacities, pop >= 300k)
+
+   The state and city layers are built ONCE, the first time you zoom in far
+   enough, then just faded and toggled. Rebuilding them per frame would be
+   far too slow — there are 137,000 line points in the state layer.
+
+   Cities are tiered so the view never turns to soup: capitals and megacities
+   appear first, then million-plus cities, then the rest only at full zoom. */
+
+let borderLines = null, hotspotLines = null, admin1Lines = null, cityPoints = null, stars = null;
+
+/* fade helper: 1 when z is at or below `lo`, 0 at or above `hi` */
+function fadeIn(z, hi, lo){
+  if(z >= hi) return 0;
+  if(z <= lo) return 1;
+  const t = (hi - z) / (hi - lo);
+  return t * t * (3 - 2 * t);          // smoothstep
+}
+
+const FADE = {
+  admin1: { hi:2.85, lo:2.50 },   // states begin appearing on the first scroll
+  city:   { hi:2.10, lo:1.85 }    // cities a little further in
+};
+
+function buildLines(features, colour, opacity, radius, filter){
+  const pts = [];
+  for(const f of features){
+    if(filter && !filter(f)) continue;
+    const polys = f.geometry.type === 'Polygon'
+      ? [f.geometry.coordinates]
+      : f.geometry.coordinates;
+    for(const poly of polys){
+      for(const ring of poly){
+        for(let i = 0; i < ring.length - 1; i++){
+          const a = latLonToVec(ring[i][1],   ring[i][0],   radius);
+          const b = latLonToVec(ring[i+1][1], ring[i+1][0], radius);
+          pts.push(a.x, a.y, a.z, b.x, b.y, b.z);
+        }
+      }
+    }
+  }
+  return finishLine(pts, colour, opacity);
+}
+
+/* The bundled admin1 file uses flat coordinate arrays — [lon,lat,lon,lat,…] —
+   which is roughly half the size of nested pairs. */
+function buildAdmin1Lines(){
+  if(!S.admin1) return null;
+  const pts = [];
+  for(const regions of Object.values(S.admin1)){
+    for(const [, rings] of regions){
+      for(const flat of rings){
+        for(let i = 0; i + 3 < flat.length; i += 2){
+          const a = latLonToVec(flat[i+1], flat[i],   R*1.0025);
+          const b = latLonToVec(flat[i+3], flat[i+2], R*1.0025);
+          pts.push(a.x, a.y, a.z, b.x, b.y, b.z);
+        }
+      }
+    }
+  }
+  return finishLine(pts, PAL.admin1, 0);
+}
+
+function finishLine(pts, colour, opacity){
+  if(!pts.length) return null;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  const line = new THREE.LineSegments(g, new THREE.LineBasicMaterial({
+    color: colour, transparent:true, opacity, depthWrite:false
+  }));
+  line.visible = opacity > 0;
+  return line;
+}
+
+function buildCityPoints(){
+  if(!S.cities) return null;
+  const pos = [], tiers = [];
+  for(const [, lon, lat, tier] of S.cities){
+    const v = latLonToVec(lat, lon, R*1.004);
+    pos.push(v.x, v.y, v.z);
+    tiers.push(tier);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  const p = new THREE.Points(g, new THREE.PointsMaterial({
+    color:PAL.city, size:0.006, sizeAttenuation:true,
+    transparent:true, opacity:0, depthWrite:false
+  }));
+  p.userData.tiers = tiers;
+  p.visible = false;
+  return p;
+}
+
+function disposeLine(obj){
+  if(!obj) return;
+  spin.remove(obj);
+  obj.geometry.dispose();
+  obj.material.dispose();
+}
+
+/* Country outlines and hotspot flags — cheap, rebuilt whenever data changes */
+function rebuildBorders(){
+  if(!S.countries) return;
+
+  if(!borderLines){
+    borderLines = buildLines(S.countries.features, PAL.border, PAL.borderOp, R*1.0015);
+    if(borderLines) spin.add(borderLines);
+  }
+
+  disposeLine(hotspotLines); hotspotLines = null;
+  const hot = S.countries.features.filter(f=>{
+    const g = maxGrowth(SEED.countries[isoOf(f)]);
+    return g != null && g >= 15;
+  });
+  if(hot.length){
+    hotspotLines = buildLines(hot, PAL.hot, PAL.hotOp, R*1.0035);
+    if(hotspotLines) spin.add(hotspotLines);
+  }
+}
+
+/* Called every frame — cheap, just adjusts opacity on prebuilt geometry */
+function updateDetailLayers(){
+  const a = fadeIn(cam.z, FADE.admin1.hi, FADE.admin1.lo);
+  const c = fadeIn(cam.z, FADE.city.hi,   FADE.city.lo);
+
+  if(a > 0 && !admin1Lines && S.admin1){
+    admin1Lines = buildAdmin1Lines();
+    if(admin1Lines) spin.add(admin1Lines);
+  }
+  if(admin1Lines){
+    admin1Lines.material.opacity = a * PAL.admin1Op;
+    admin1Lines.visible = a > 0.01;
+  }
+
+  if(c > 0 && !cityPoints && S.cities){
+    cityPoints = buildCityPoints();
+    if(cityPoints) spin.add(cityPoints);
+  }
+  if(cityPoints){
+    cityPoints.material.opacity = c * 0.9;
+    cityPoints.material.size = 0.004 + c * 0.004;
+    cityPoints.visible = c > 0.01;
+  }
+
+  // datasets are preloaded at boot; this is just a safety net if that failed
+  if(cam.z < FADE.admin1.hi + 0.4) ensureAdmin1();
+  if(cam.z < FADE.city.hi   + 0.4) ensureCities();
+}
+
+/* ── 7. THREE.JS SCENE ────────────────────────────────────────────────── */
+
+const R = 1;
+let renderer, scene, camera, tilt, spin, globe, atmo, raycaster, sphereForPick;
+
+let wellEl = null, wellW = 1, wellH = 1;
+
+function initScene(){
+  wellEl = document.getElementById('well');
+  wellW = wellEl.clientWidth || innerWidth;
+  wellH = wellEl.clientHeight || innerHeight;
+
+  renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setSize(wellW, wellH);
+  renderer.setClearColor(PAL.clear, 1);
+  wellEl.insertBefore(renderer.domElement, wellEl.firstChild);
+
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(38, wellW/wellH, 0.01, 100);
+  camera.position.set(0,0,3.1);
+
+  tilt = new THREE.Group();            // rotates on X
+  spin = new THREE.Group();            // rotates on Y  →  world = Rx · Ry · p
+  tilt.add(spin); scene.add(tilt);
+
+  // Use a bigger texture when the GPU can take it. Mobile stays at 4096.
+  const maxT = renderer.capabilities.maxTextureSize || 4096;
+  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+  if(maxT >= 8192 && !isMobile){
+    TEX_W = 8192; TEX_H = 4096;
+    tex.width = TEX_W; tex.height = TEX_H;
+  }
+
+  texture = new THREE.CanvasTexture(tex);
+  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
+
+  const geo = new THREE.SphereGeometry(R, 96, 64);
+  globe = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({map:texture}));
+  spin.add(globe);
+  sphereForPick = globe;
+
+  // Rim light. Colour and strength are uniforms so the theme switch can reach
+  // them — on the light theme it drops to a faint edge instead of a halo.
+  const atmoMat = new THREE.ShaderMaterial({
+    uniforms:{ uColor:{value:new THREE.Vector3().fromArray(PAL.atmo)}, uStrength:{value:PAL.atmoStr} },
+    transparent:true, side:THREE.BackSide, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader:`varying vec3 vN; void main(){ vN = normalize(normalMatrix*normal);
+      gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader:`varying vec3 vN; uniform vec3 uColor; uniform float uStrength; void main(){
+      float i = pow(0.72 - dot(vN, vec3(0.,0.,1.)), 3.0);
+      gl_FragColor = vec4(uColor,1.0)*clamp(i,0.0,1.0)*uStrength; }`
+  });
+  atmo = new THREE.Mesh(new THREE.SphereGeometry(R*1.055, 64, 48), atmoMat);
+  scene.add(atmo);
+
+  stars = makeStars();
+  scene.add(stars);
+  raycaster = new THREE.Raycaster();
+
+  // The well resizes when panels are hidden or a sheet opens, not just when
+  // the window does, so watch the element rather than the window.
+  new ResizeObserver(onResize).observe(wellEl);
+  addEventListener('resize', onResize);
+}
+
+function makeStars(){
+  const n = 2600, pos = new Float32Array(n*3);
+  for(let i=0;i<n;i++){
+    const r = 28 + Math.random()*24;
+    const th = Math.acos(2*Math.random()-1), ph = Math.random()*Math.PI*2;
+    pos[i*3]   = r*Math.sin(th)*Math.cos(ph);
+    pos[i*3+1] = r*Math.cos(th);
+    pos[i*3+2] = r*Math.sin(th)*Math.sin(ph);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  const p = new THREE.Points(g, new THREE.PointsMaterial({
+    color:PAL.star, size:0.09, sizeAttenuation:true, transparent:true, opacity:PAL.starOp
+  }));
+  p.visible = PAL.starOp > 0;
+  return p;
+}
+
+function onResize(){
+  if(!wellEl || !renderer) return;
+  wellW = Math.max(1, wellEl.clientWidth);
+  wellH = Math.max(1, wellEl.clientHeight);
+  camera.aspect = wellW/wellH; camera.updateProjectionMatrix();
+  renderer.setSize(wellW, wellH);
+}
+
+/* ── 8. CAMERA MATH ───────────────────────────────────────────────────────
+   Inverse of three.js's own sphere parametrisation, so picking and marker
+   placement agree exactly. Derivation in the guide, §4. */
+
+function latLonToVec(lat, lon, r=R){
+  const u = (lon+180)/360, v = (90-lat)/180;
+  const phi = u*Math.PI*2, theta = v*Math.PI;
+  return new THREE.Vector3(
+    -r*Math.cos(phi)*Math.sin(theta),
+     r*Math.cos(theta),
+     r*Math.sin(phi)*Math.sin(theta)
+  );
+}
+function uvToLatLon(uv){ return {lat: uv.y*180 - 90, lon: uv.x*360 - 180}; }
+
+// rotation that brings (lat,lon) to face the camera
+function facing(lat, lon){
+  return { x: lat*Math.PI/180, y: Math.PI/2 - (lon+180)*Math.PI/180 };
+}
+
+const cam = { rx:0.28, ry:-1.2, z:3.1, trx:0.28, try_:-1.2, tz:3.1 };
+
+const ZOOM_MIN = 1.28, ZOOM_MAX = 3.4;
+const LOD_REGION = 2.75, LOD_CITY = 2.00;   // kept in step with FADE above
+
+function currentLOD(){
+  if(cam.z > LOD_REGION) return 'world';
+  if(cam.z > LOD_CITY)   return 'region';
+  return 'city';
+}
+
+/* ── 9. INTERACTION ───────────────────────────────────────────────────── */
+
+let dragging=false, moved=0, px=0, py=0;
+function bindInput(){
+  const el = renderer.domElement;
+  el.style.cursor = 'grab';
+  el.addEventListener('pointerdown', e=>{
+    dragging=true; moved=0; px=e.clientX; py=e.clientY; el.style.cursor='grabbing'; el.setPointerCapture(e.pointerId);
+  });
+  el.addEventListener('pointermove', e=>{
+    if(dragging){
+      const dx=e.clientX-px, dy=e.clientY-py; px=e.clientX; py=e.clientY;
+      moved += Math.abs(dx)+Math.abs(dy);
+      const k = 0.0042 * (cam.z/3.1);            // slower drag when zoomed in
+      cam.try_ += dx*k; cam.trx += dy*k;
+      cam.trx = clamp(cam.trx, -1.45, 1.45);
+    } else {
+      onHover(e);
+    }
+  });
+  el.addEventListener('pointerup', e=>{
+    dragging=false; el.style.cursor='grab';
+    if(moved < 5) onClick(e);
+  });
+  el.addEventListener('pointerleave', ()=>{ dragging=false; hideTip(); });
+  el.addEventListener('wheel', e=>{
+    e.preventDefault();
+    cam.tz = clamp(cam.tz + e.deltaY*0.0016, ZOOM_MIN, ZOOM_MAX);
+  }, {passive:false});
+
+  addEventListener('keydown', e=>{
+    if(e.key === 'Escape') goUp();
+    if(e.key === '+' || e.key === '=') cam.tz = clamp(cam.tz-0.2, ZOOM_MIN, ZOOM_MAX);
+    if(e.key === '-') cam.tz = clamp(cam.tz+0.2, ZOOM_MIN, ZOOM_MAX);
+  });
+}
+
+function pick(e){
+  const rect = renderer.domElement.getBoundingClientRect();
+  const m = new THREE.Vector2(
+    ((e.clientX-rect.left)/rect.width)*2-1,
+    -((e.clientY-rect.top)/rect.height)*2+1
+  );
+  raycaster.setFromCamera(m, camera);
+  const hit = raycaster.intersectObject(sphereForPick, false)[0];
+  if(!hit || !hit.uv) return null;
+  return uvToLatLon(hit.uv);
+}
+
+/* point-in-polygon over GeoJSON, ray casting, holes handled by parity */
+function inRing(lon, lat, ring){
+  let inside=false;
+  for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+    const xi=ring[i][0], yi=ring[i][1], xj=ring[j][0], yj=ring[j][1];
+    if(((yi>lat)!==(yj>lat)) && (lon < (xj-xi)*(lat-yi)/(yj-yi)+xi)) inside=!inside;
+  }
+  return inside;
+}
+function inGeom(lon, lat, geom){
+  const polys = geom.type==='Polygon' ? [geom.coordinates] : geom.coordinates;
+  for(const poly of polys){
+    let hit = false;
+    poly.forEach((ring,i)=>{ if(inRing(lon,lat,ring)) hit = !hit; });
+    if(hit) return true;
+  }
+  return false;
+}
+/* The bundled admin1 file stores rings as flat [lon,lat,lon,lat,…] arrays,
+   so point-in-polygon walks them two at a time. Parity across rings handles
+   holes, same as the country test above. */
+function inFlatRing(lon, lat, f){
+  let inside = false;
+  for(let i = 0, j = f.length - 2; i < f.length; j = i, i += 2){
+    const xi = f[i], yi = f[i+1], xj = f[j], yj = f[j+1];
+    if(((yi > lat) !== (yj > lat)) &&
+       (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+function inFlatRings(lon, lat, rings){
+  let hit = false;
+  for(const flat of rings) if(inFlatRing(lon, lat, flat)) hit = !hit;
+  return hit;
+}
+function centroidOfFlat(rings){
+  let best = null, bl = 0;
+  for(const flat of rings) if(flat.length > bl){ bl = flat.length; best = flat; }
+  if(!best) return {lat:0, lon:0};
+  let sx = 0, sy = 0, n = 0;
+  for(let i = 0; i + 1 < best.length; i += 2){ sx += best[i]; sy += best[i+1]; n++; }
+  return {lon: sx/n, lat: sy/n};
+}
+
+function findCountry(lat, lon){
+  if(!S.countries) return null;
+  return S.countries.features.find(f=>inGeom(lon,lat,f.geometry)) || null;
+}
+function findAdmin1(lat, lon, iso){
+  if(!S.admin1) return null;
+  const regions = S.admin1[iso];
+  if(!regions) return null;
+  for(const [name, rings] of regions){
+    if(inFlatRings(lon, lat, rings)) return {name, rings, iso};
+  }
+  // Simplifying 38 MB of boundaries down to 2.8 MB shaves detail off
+  // coastlines, so a click on a waterfront city can land just outside every
+  // polygon. Fall back to the nearest boundary within ~60 km.
+  return nearestRegion(lat, lon, regions, 0.6);
+}
+
+function nearestRegion(lat, lon, regions, maxDeg){
+  let best = null, bd = Infinity;
+  const cos = Math.cos(lat * Math.PI / 180);
+  for(const [name, rings] of regions){
+    for(const flat of rings){
+      for(let i = 0; i + 1 < flat.length; i += 2){
+        const d = Math.hypot(flat[i+1] - lat, (flat[i] - lon) * cos);
+        if(d < bd){ bd = d; best = {name, rings, iso:regions.iso}; }
+      }
+    }
+  }
+  if(bd > maxDeg || !best) return null;
+  const hit = regions.find(r => r[0] === best.name);
+  return hit ? {name:hit[0], rings:hit[1]} : null;
+}
+function regionByName(iso, name){
+  const regions = S.admin1 && S.admin1[iso];
+  if(!regions) return null;
+  const hit = regions.find(r => r[0] === name);
+  return hit ? {name:hit[0], rings:hit[1], iso} : null;
+}
+/* Nearest major city to a point. Checks the bundled geography first, then
+   looks for a matching record in the surveillance data. */
+function findCityNear(lat, lon, maxDeg){
+  if(!S.cities) return null;
+  const cosLat = Math.cos(lat * Math.PI / 180);
+  let best = null, bd = Infinity;
+  for(const c of S.cities){
+    const d = Math.hypot(c[2] - lat, (c[1] - lon) * cosLat);
+    if(d < bd){ bd = d; best = c; }
+  }
+  if(bd > maxDeg || !best) return null;
+  const [name, lonC, latC, tier, iso, adm1] = best;
+  return { name, lon:lonC, lat:latC, tier, iso, adm1,
+           key: iso + ':' + name,
+           rec: SEED.cities[iso + ':' + name] || null };
+}
+
+/* ── 10. DRILL-DOWN ────────────────────────────────────────────────────── */
+
+function onClick(e){
+  const ll = pick(e); if(!ll) return;
+  const lod = currentLOD();
+
+  // deepest tier first: a city marker beats the region under it
+  if(lod === 'city'){
+    const c = findCityNear(ll.lat, ll.lon, 2.2);
+    if(c){ selectCity(c); return; }
+  }
+
+  const f = findCountry(ll.lat, ll.lon);
+  if(!f) return;
+  const iso = isoOf(f);
+
+  if(lod === 'world' && S.view.level === 'world'){
+    selectContinent(contOf(f));
+    return;
+  }
+  if(lod !== 'world'){
+    const a = findAdmin1(ll.lat, ll.lon, iso);
+    if(a && (S.view.iso === iso || lod === 'city')){ selectAdmin1(iso, a); return; }
+  }
+  selectCountry(iso, f);
+}
+
+const _cent = new WeakMap();
+function centroidOf(f){
+  if(_cent.has(f)) return _cent.get(f);
+  const c = computeCentroid(f); _cent.set(f, c); return c;
+}
+function computeCentroid(f){
+  // area-weighted-ish: mean of the largest ring, good enough to aim a camera
+  let best=null, bl=0;
+  const polys = f.geometry.type==='Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
+  polys.forEach(p=>{ if(p[0].length > bl){ bl = p[0].length; best = p[0]; } });
+  if(!best) return {lat:0, lon:0};
+  let sx=0, sy=0;
+  best.forEach(([lo,la])=>{ sx+=lo; sy+=la; });
+  return {lon:sx/best.length, lat:sy/best.length};
+}
+
+function flyTo(lat, lon, z){
+  const r = facing(lat, lon);
+  cam.trx = clamp(r.x, -1.45, 1.45);
+  // choose the equivalent angle nearest the current one so it never spins the long way
+  let ty = r.y;
+  while(ty - cam.try_ >  Math.PI) ty -= Math.PI*2;
+  while(ty - cam.try_ < -Math.PI) ty += Math.PI*2;
+  cam.try_ = ty;
+  cam.tz = clamp(z, ZOOM_MIN, ZOOM_MAX);
+}
+
+const CONTINENT_VIEW = {
+  'Africa':{lat:2,lon:20,z:2.05},'Europe':{lat:52,lon:14,z:2.0},
+  'Asia':{lat:32,lon:92,z:1.95},'North America':{lat:44,lon:-100,z:2.0},
+  'South America':{lat:-16,lon:-60,z:2.05},'Oceania':{lat:-25,lon:140,z:2.05},
+  'Antarctica':{lat:-78,lon:0,z:2.2}
+};
+
+function selectContinent(cont){
+  S.view = {level:'continent', continent:cont, iso:null, region:null, city:null};
+  const v = CONTINENT_VIEW[cont] || {lat:0,lon:0,z:2.1};
+  flyTo(v.lat, v.lon, v.z);
+  refresh();
+}
+function selectCountry(iso, feature){
+  const f = feature || S.countries.features.find(x=>isoOf(x)===iso);
+  S.view = {level:'country', continent:f?contOf(f):S.view.continent, iso, region:null, city:null};
+  if(f){ const c = centroidOf(f); flyTo(c.lat, c.lon, 1.72); }
+  ensureAdmin1();
+  refresh();
+}
+function selectAdmin1(iso, region){
+  S.view = {level:'admin1', continent:S.view.continent, iso, region:region.name, city:null};
+  const c = centroidOfFlat(region.rings);
+  flyTo(c.lat, c.lon, 1.55);
+  refresh();
+}
+function selectCity(c){
+  S.view = {level:'city', continent:S.view.continent, iso:c.iso,
+            region: c.adm1 || S.view.region, city:c.name};
+  flyTo(c.lat, c.lon, 1.34);
+  refresh();
+}
+function goWorld(){ S.view={level:'world',continent:null,iso:null,region:null,city:null}; cam.tz=3.1; refresh(); }
+function goUp(){
+  const v = S.view;
+  if(v.level==='city')      { v.level = v.region ? 'admin1' : 'country'; v.city=null; cam.tz=1.6; }
+  else if(v.level==='admin1'){ v.level='country'; v.region=null; cam.tz=1.75; }
+  else if(v.level==='country'){ selectContinent(v.continent||'Africa'); return; }
+  else goWorld();
+  refresh();
+}
+
+let lastLOD = 'world', lastFocus = null;
+function ensureAdmin1(){
+  if(S.admin1 || S._a1loading || S._a1failed) return;
+  S._a1loading = true;
+  fetchFirst(GEO.admin1)
+    .then(j=>{ S.admin1 = j; paint(); })
+    .catch(()=>{
+      S._a1failed = true;
+      note(t('note.admin1'));
+    })
+    .finally(()=>{ S._a1loading = false; });
+}
+function ensureCities(){
+  if(S.cities || S._ctloading || S._ctfailed) return;
+  S._ctloading = true;
+  fetchFirst(GEO.cities)
+    .then(j=>{ S.cities = j; })
+    .catch(()=>{
+      S._ctfailed = true;
+      note(t('note.cities'));
+    })
+    .finally(()=>{ S._ctloading = false; });
+}
+
+/* ── 11. HOVER ────────────────────────────────────────────────────────── */
+
+const tip = document.getElementById('tip');
+let hoverRAF = 0;
+function onHover(e){
+  if(hoverRAF) return;
+  hoverRAF = requestAnimationFrame(()=>{
+    hoverRAF = 0;
+    const ll = pick(e);
+    if(!ll){ hideTip(); return; }
+    const lod = currentLOD();
+    let name = null, rec = null, sev = null, note = null;
+
+    const f = findCountry(ll.lat, ll.lon);
+    const iso = f ? isoOf(f) : null;
+
+    // city marker under the cursor?
+    if(lod === 'city'){
+      const c = findCityNear(ll.lat, ll.lon, 1.6);
+      if(c){
+        name = c.name;
+        rec  = c.rec;
+        if(!rec && c.adm1) rec = SEED.admin1[c.iso + ':' + c.adm1] || null;
+        if(rec) note = c.rec ? null : t('tip.figuresFor', {region:c.adm1});
+        if(!rec && iso){ rec = SEED.countries[iso]; note = t('tip.national'); }
+        sev = rec ? entitySeverity(rec) : null;
+      }
+    }
+
+    // state / province
+    if(!name && lod !== 'world' && iso){
+      const a = findAdmin1(ll.lat, ll.lon, iso);
+      if(a){
+        name = a.name;
+        rec  = SEED.admin1[iso + ':' + a.name] || null;
+        if(!rec){ rec = SEED.countries[iso]; note = rec ? t('tip.national') : null; }
+        sev = rec ? entitySeverity(rec) : null;
+      }
+    }
+
+    // country
+    if(!name && f){
+      name = nameOf(f); rec = SEED.countries[iso];
+      sev = rec ? entitySeverity(rec) : null;
+    }
+
+    if(!name){ hideTip(); return; }
+    showTip(e, name, rec, sev, note);
+  });
+}
+function showTip(e, name, rec, sev, scopeNote){
+  const tr = tierOf(sev);
+  const dis = (rec && rec.diseases) ? rec.diseases : [];
+  const rows = dis.slice(0,3).map(d=>{
+    const n = d.cases!=null ? t('cases',{n:fmt(d.cases)}) : t('nocount');
+    return `<div class="td"><span>${esc(d.name)}</span><span>${n} ${trendArrow(d.growth7d)}</span></div>`;
+  }).join('') || `<div class="td"><span>${t('tip.none')}</span><span>—</span></div>`;
+  const fresh = freshness(freshestAsOf(dis));
+  tip.innerHTML = `<div class="tn">${esc(name)}</div>${rows}
+    ${scopeNote ? `<div class="td" style="color:var(--ink-dim);font-style:italic">${esc(scopeNote)}</div>` : ''}
+    <div class="tt" style="color:${tr.hex}">
+      <span style="width:6px;height:6px;border-radius:50%;background:${tr.hex};display:block"></span>${esc(tierLabel(sev))}${sev!=null?' · '+sev:''}
+      <span style="margin-inline-start:auto;color:${fresh.hex}">${fresh.label}</span>
+    </div>`;
+  // coordinates are relative to the well, and the card flips before it would
+  // run off the far edge
+  const box = wellEl.getBoundingClientRect();
+  const x = e.clientX - box.left, y = e.clientY - box.top;
+  const flip = x > box.width - 270;
+  tip.style.left = x+'px'; tip.style.top = y+'px';
+  tip.style.transform = flip ? 'translate(calc(-100% - 14px),-50%)' : 'translate(14px,-50%)';
+  tip.style.opacity = 1;
+}
+function hideTip(){ tip.style.opacity = 0; }
+
+/* ── 12. FRESHNESS ────────────────────────────────────────────────────────
+   Every number on this map is only as good as its date. Sources report at
+   wildly different speeds — WHO posts a bulletin the week it happens, ECDC
+   reports by ISO week, some national agencies run a month behind. So every
+   figure carries its own age, shown everywhere it appears.
+
+   Handles both "2026-07-15" and ISO week strings like "2026-W20". */
+
+function parseAsOf(s){
+  if(!s) return null;
+  const wk = /^(\d{4})-W(\d{1,2})$/.exec(String(s));
+  if(wk){
+    const year = +wk[1], week = +wk[2];
+    const jan4 = new Date(Date.UTC(year, 0, 4));
+    const mondayOffset = (jan4.getUTCDay() + 6) % 7;
+    const week1Monday = jan4.getTime() - mondayOffset * 86400000;
+    return new Date(week1Monday + (week * 7 - 1) * 86400000);  // end of that week
+  }
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+
+function ageDays(asOf){
+  const d = parseAsOf(asOf);
+  if(!d) return null;
+  return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86400000));
+}
+
+/* Four bands. The thresholds match how often the sources actually publish:
+   a weekly source is doing its job at 7 days, badly behind at 30. */
+function freshness(asOf){
+  const d = ageDays(asOf);
+  if(d == null) return { label:t('age.nodate'), short:'—',    hex:PAL.dim,  rank:4 };
+  if(d <= 8)    return { label:ago(d), short:ago(d, true), hex:PAL.ok,   rank:0 };
+  if(d <= 30)   return { label:ago(d), short:ago(d, true), hex:PAL.warn, rank:1 };
+  if(d <= 90)   return { label:ago(d), short:ago(d, true), hex:PAL.mid,  rank:2 };
+  return          { label:ago(d), short:ago(d, true), hex:PAL.bad,  rank:3 };
+}
+
+function ago(d, terse){
+  // terse form goes in the log gutter, where there is room for about six
+  // characters and the column header already says what it is
+  if(terse){
+    if(d === 0) return '0d';
+    if(d < 14)  return d + 'd';
+    if(d < 70)  return Math.round(d/7) + 'w';
+    return Math.round(d/30) + 'mo';
+  }
+  if(d === 0) return t('age.today');
+  if(d === 1) return t('age.yesterday');
+  if(d < 14)  return t('age.days',   {n:d});
+  if(d < 70)  return t('age.weeks',  {n:Math.round(d/7)});
+  return         t('age.months', {n:Math.round(d/30)});
+}
+
+/* The freshest figure anywhere in a record — what the headline badge shows. */
+function freshestAsOf(diseases){
+  const dated = (diseases||[]).map(d=>d.asOf).filter(Boolean);
+  if(!dated.length) return null;
+  return dated.sort((a,b)=>(ageDays(a)??99999)-(ageDays(b)??99999))[0];
+}
+
+function bestFreshness(rec){
+  if(!rec || !rec.diseases || !rec.diseases.length) return freshness(null);
+  return rec.diseases
+    .map(d => freshness(d.asOf))
+    .sort((a,b) => a.rank - b.rank)[0];
+}
+
+function freshBadge(asOf, extra){
+  const f = freshness(asOf);
+  return `<span class="fresh" style="color:${f.hex}">
+    <span class="freshdot" style="background:${f.hex}"></span>${f.label}${extra?' · '+extra:''}</span>`;
+}
+
+/* ── 13. UI RENDER ────────────────────────────────────────────────────── */
+
+const $ = s=>document.querySelector(s);
+const fmt = n => n==null ? '—' : n.toLocaleString(LOCALE[LANG] || 'en-US');
+const esc = s => String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* Tier names are translated; the hex comes from the active palette. */
+function tierIndex(sev){ return sev==null ? -1 : TIERS.findIndex(x=>sev<=x.max); }
+function tierLabel(sev){ const i = tierIndex(sev); return i<0 ? t('tier.none') : t('tier.'+i); }
+
+function trendArrow(g){
+  if(g==null) return '';
+  if(g > 5)  return `<span style="color:${PAL.bad}">▲${Math.round(g)}%</span>`;
+  if(g < -5) return `<span style="color:${PAL.ok}">▼${Math.abs(Math.round(g))}%</span>`;
+  return `<span style="color:${PAL.flat}">▬</span>`;
+}
+
+function currentEntity(){
+  const v = S.view;
+  if(v.level==='city')    return {name:v.city, key:v.iso+':'+v.city, rec:SEED.cities[v.iso+':'+v.city], label:t('sel.city')};
+  if(v.level==='admin1')  return {name:v.region, key:v.iso+':'+v.region, rec:SEED.admin1[v.iso+':'+v.region], label:t('sel.state')};
+  if(v.level==='country'){
+    const f = S.countries?.features.find(x=>isoOf(x)===v.iso);
+    return {name:f?nameOf(f):v.iso, key:v.iso, rec:SEED.countries[v.iso], label:t('sel.country')};
+  }
+  if(v.level==='continent') return {name:continentLabel(v.continent), key:'C:'+v.continent,
+    rec:S.entities.get('C:'+v.continent)?.rec, label:t('sel.continent')};
+  return {name:t('sel.world'), key:'GLOBAL', rec:{diseases:aggregateDiseases(Object.keys(SEED.countries)), conf:null}, label:t('sel.world')};
+}
+function continentLabel(cont){
+  const key = 'cont.' + (CONTINENT_LABEL[cont] || cont);
+  const s = (STR[LANG] && STR[LANG][key]) || STR.en[key];
+  return s || CONTINENT_LABEL[cont] || cont;
+}
+
+function renderInfo(){
+  const ent = currentEntity();
+  const sev = ent.key==='GLOBAL'
+    ? rollup([...S.continents.keys()].map(c=>({severity:S.entities.get('C:'+c)?.sev, pop:1})).filter(x=>x.severity!=null))
+    : (S.entities.get(ent.key)?.sev ?? (ent.rec?entitySeverity(ent.rec):null));
+  const tier = tierOf(sev);
+
+  const dis = ent.rec?.diseases || [];
+  const cards = dis.length ? dis.map(d=>`
+    <div class="dcard">
+      <div class="dname"><h4 dir="auto">${esc(d.name)}</h4><span class="trend">${trendArrow(d.growth7d)}</span></div>
+      <div class="stats">
+        <div class="stat"><div class="k">${t('stat.cases')}</div><div class="v">${fmt(d.cases)}</div></div>
+        <div class="stat"><div class="k">${t('stat.deaths')}</div><div class="v">${fmt(d.deaths)}</div></div>
+        <div class="stat"><div class="k">${t('stat.cfr')}</div><div class="v">${d.cfr!=null?d.cfr.toFixed(1)+'%':'—'}</div></div>
+      </div>
+      <div class="srcline">
+        ${freshBadge(d.asOf)}
+        <span class="num" style="font-size:9.5px;color:var(--ink-dim);letter-spacing:.05em">
+          ${d.asOf ? esc(d.asOf) : t('undated')}
+        </span>
+      </div>
+      <div class="src" dir="auto">
+        ${esc(d.source||t('sourcePending'))}
+        ${d.url ? ` · <a href="${esc(d.url)}" target="_blank" rel="noopener">${t('openSource')}</a>` : ''}
+        ${d.provisional ? `<br><span class="prov">${t('provisional')}</span>` : ''}
+      </div>
+    </div>`).join('') : `<div class="empty">${t('sel.none')}</div>`;
+
+  const confMap = {high:PAL.ok, medium:PAL.warn, low:PAL.bad};
+  const conf = ent.rec?.conf;
+
+  $('#infobody').innerHTML = `
+    <div id="idhead">
+      <div id="idtop">
+        <div style="min-width:0">
+          <div class="eyebrow">${esc(ent.label)}</div>
+          <div id="idname" dir="auto">${esc(ent.name)}</div>
+        </div>
+        <div>
+          <div id="idscore" style="color:${tier.hex}">${sev==null?'——':sev}</div>
+          <div id="idscorelbl">${t('sel.index')}</div>
+        </div>
+      </div>
+      <div id="idbar"><i style="width:${sev==null?0:sev}%;background:${tier.hex}"></i></div>
+      <div id="idmeta">
+        <span style="color:${tier.hex}"><span class="dot" style="background:${tier.hex}"></span>${esc(tierLabel(sev))}</span>
+        ${freshBadge(freshestAsOf(dis), t('sel.newest'))}
+        ${conf ? `<span><span class="dot" style="background:${confMap[conf]}"></span>${t('conf.'+conf)}</span>` : ''}
+      </div>
+    </div>${cards}`;
+
+  renderDrawer(dis);
+}
+
+/* ── THE DRAWER ────────────────────────────────────────────────────────────
+   Every disease on the globe has an entry behind it. The server builds them
+   (api/guidance.js) and hands them over keyed by the exact disease name, so
+   the lookup here is normally a straight hit.
+
+   The three fallbacks below exist for the cases where it isn't: running the
+   page off the bundled snapshot with the scraper down, or a disease name the
+   server's own resolver didn't recognise.
+     1. exact key
+     2. case-insensitive, then longest key contained in the name — this is what
+        makes "Ebola (Bundibugyo virus)" find the "Ebola" entry
+     3. ask the public reference API directly from the browser, cache it, and
+        repaint when it lands
+   ------------------------------------------------------------------------- */
+
+const gCache = new Map();     // disease name -> entry, for client-side lookups
+const gPending = new Set();   // in-flight lookups, so we don't fire twice
+
+function guidanceFor(name){
+  if(!name) return null;
+  const G = SEED.guidance || {};
+  if(G[name]) return G[name];
+  if(gCache.has(name)) return gCache.get(name);
+
+  const keys = Object.keys(G).filter(k => !k.startsWith('_'));
+  const lower = name.toLowerCase();
+
+  const ci = keys.find(k => k.toLowerCase() === lower);
+  if(ci) return G[ci];
+
+  // longest key that appears inside the reported name
+  let best = null;
+  for(const k of keys){
+    const kl = k.toLowerCase();
+    if(lower.includes(kl) && (!best || kl.length > best.length)) best = kl;
+  }
+  if(best){
+    const k = keys.find(x => x.toLowerCase() === best);
+    return { ...G[k], appliedFrom: k };
+  }
+  return null;
+}
+
+/* Browser-side version of the server's auto-resolver. Only runs when the
+   server didn't supply an entry — normally never. Same source, same shape. */
+async function autoGuidance(name){
+  if(gCache.has(name) || gPending.has(name)) return;
+  gPending.add(name);
+  try{
+    const api = 'https://en.wikipedia.org/w/api.php';
+    const s = await (await fetch(`${api}?action=query&list=search&srsearch=`
+      + encodeURIComponent(name + ' disease') + '&srlimit=1&format=json&origin=*')).json();
+    const title = s?.query?.search?.[0]?.title;
+    if(!title) throw new Error('no article');
+
+    const p = await (await fetch(`${api}?action=query&prop=extracts&explaintext=1&redirects=1&titles=`
+      + encodeURIComponent(title) + '&format=json&origin=*')).json();
+    const extract = Object.values(p?.query?.pages || {})[0]?.extract;
+    if(!extract) throw new Error('no extract');
+
+    const sec = {}; let cur = 'intro'; sec[cur] = '';
+    for(const line of extract.split('\n')){
+      const h = line.match(/^\s*(={2,6})\s*(.+?)\s*\1\s*$/);
+      if(h){ cur = h[2].toLowerCase().trim(); sec[cur] = ''; }
+      else sec[cur] += ' ' + line;
+    }
+    const sent = txt => String(txt||'').replace(/\s+/g,' ').replace(/\[\d+\]/g,'')
+      .split(/(?<=[.!?])\s+(?=[A-Z(])/).map(x=>x.trim())
+      .filter(x => x.length > 40 && x.length < 320);
+    const pick = (cands, n=3) => {
+      for(const w of cands) for(const [h,b] of Object.entries(sec))
+        if(h.includes(w)){ const v = sent(b); if(v.length) return v.slice(0,n); }
+      return [];
+    };
+
+    const intro = sent(sec.intro).slice(0,2);
+    const entry = {
+      auto:true,
+      treatments: pick(['treatment','management','therapy']).length ? pick(['treatment','management','therapy']) : intro,
+      travel: ['No travel guidance is published for this disease yet — it is new to this pipeline.',
+               `Check <a href="https://wwwnc.cdc.gov/travel/notices" target="_blank" rel="noopener">CDC travel notices</a> and the WHO advisory before travelling.`],
+      avoid: pick(['transmission','cause','risk factor','spread'],2).map(x=>'Known route of spread: '+x),
+      prevention: pick(['prevention','vaccine','vaccination','control']),
+      symptoms: pick(['signs and symptoms','symptoms','presentation']).length ? pick(['signs and symptoms','symptoms','presentation']) : intro,
+      detection: pick(['diagnosis','screening','testing']),
+      source:'Auto-compiled from public reference sources — unverified',
+      url:'https://en.wikipedia.org/wiki/' + encodeURIComponent(title.replace(/ /g,'_'))
+    };
+    for(const k of ['avoid','prevention','detection']) if(!entry[k].length) entry[k] = ['Not established by the automatic lookup. See the source bulletin.'];
+    gCache.set(name, entry);
+  }catch(e){
+    // Cache the failure too, so the drawer stops saying "looking this one up"
+    // and the lookup isn't retried on every repaint.
+    gCache.set(name, { ...SEED.guidance._default, pending:true,
+      treatments:['No guidance is loaded for this disease and the automatic lookup did not return one.',
+                  'Use the source bulletin linked in the panel above — it is outbreak-specific and more reliable than general advice.'] });
+  }finally{
+    gPending.delete(name);
+    if(S.disease === name) renderDrawer(currentEntity().rec?.diseases || []);
+  }
+}
+
+const CHIPS = [
+  { q:'symptoms',  field:'symptoms'  },
+  { q:'detection', field:'detection' },
+  { q:'places',    field:'avoid'     },
+  { q:'other',     field:null        }
+];
+
+function renderDrawer(dis){
+  const body = $('#tabbody'), sel = $('#dsel');
+
+  if(!dis.length){
+    sel.style.display = 'none';
+    body.innerHTML = `<div style="color:var(--ink-dim);font-size:12px;line-height:1.55">${t('drawer.empty')}</div>`;
+    return;
+  }
+
+  // Which disease is the drawer talking about? Keep the user's pick if it's
+  // still present at this location, otherwise fall back to the most severe one.
+  const names = [...new Set(dis.map(d => d.name))];
+  if(!names.includes(S.disease)){
+    S.disease = names.slice().sort((a,b)=>
+      (diseaseSeverity(dis.find(d=>d.name===b)) ?? -1) -
+      (diseaseSeverity(dis.find(d=>d.name===a)) ?? -1))[0];
+  }
+  const name = S.disease;
+
+  // selector row — only worth showing when there's a choice to make
+  if(names.length > 1){
+    sel.style.display = 'flex';
+    sel.innerHTML = names.map(n=>{
+      const tr = tierOf(diseaseSeverity(dis.find(d=>d.name===n)));
+      return `<button class="${n===name?'on':''}" data-d="${esc(n)}">
+        <i style="background:${tr.hex}"></i>${esc(n)}</button>`;
+    }).join('');
+    sel.querySelectorAll('button').forEach(b=>{
+      b.onclick = ()=>{ S.disease = b.dataset.d; S.chip = null; renderDrawer(dis); };
+    });
+  } else {
+    sel.style.display = 'none';
+  }
+
+  let g = guidanceFor(name);
+  if(!g){ autoGuidance(name); g = SEED.guidance._default; }
+
+  const items = (g[S.tab] || []).filter(Boolean);
+
+  const tag = g.auto
+    ? `<span class="gtag" style="color:${PAL.warn};border-color:${PAL.warn}66;background:${PAL.warn}14">${t('drawer.auto')}</span>`
+    : g.pending
+      ? `<span class="gtag" style="color:var(--ink-dim);border-color:var(--hairline-hi)">${t('drawer.pending')}</span>`
+      : '';
+
+  const applied = g.appliedFrom && g.appliedFrom !== name
+    ? `<div class="gapplied">${t('drawer.applied', {src:esc(g.appliedFrom), name:esc(name)})}</div>`
+    : '';
+
+  body.innerHTML = `
+    ${tag}${applied}
+    ${items.length
+      ? `<ul>${items.map(i=>`<li dir="auto">${i}</li>`).join('')}</ul>`
+      : `<div style="color:var(--ink-dim);font-size:12px">${t('drawer.noGuidance', {kind:t('guide.'+S.tab), name:esc(name)})}</div>`}
+    <div class="gsrc" dir="auto">
+      ${esc(g.source || t('sourcePending'))}
+      ${g.url ? ` · <a href="${esc(g.url)}" target="_blank" rel="noopener">${t('openSource')}</a>` : ''}
+      <br>${esc(SEED.guidance._disclaimer || '')}
+    </div>
+    <div class="chips">
+      ${CHIPS.map(c=>`<button class="chip ${S.chip===c.q?'on':''}" data-q="${c.q}">${t('chip.'+c.q)}</button>`).join('')}
+    </div>
+    <div id="chipans"></div>`;
+
+  body.querySelectorAll('.chip').forEach(b=>{
+    b.onclick = ()=>{ S.chip = (S.chip === b.dataset.q) ? null : b.dataset.q; renderDrawer(dis); };
+  });
+
+  if(S.chip) renderChipAnswer(g, name);
+}
+
+/* The four FAQ chips from the spec, answered from the same entry the tabs use.
+   No round trip, no API key, and it works with the scraper down. */
+function renderChipAnswer(g, name){
+  const box = $('#chipans');
+  const spec = CHIPS.find(c => c.q === S.chip);
+  if(!spec) return;
+  box.style.display = 'block';
+
+  if(spec.field){
+    const lines = (g[spec.field] || []).filter(Boolean);
+    box.innerHTML = `<div class="qh">${t('chiphead.'+spec.q)} · ${esc(name)}</div>` +
+      (lines.length ? `<ul>${lines.map(l=>`<li dir="auto">${l}</li>`).join('')}</ul>`
+                    : `<div style="color:var(--ink-dim)">${t('chip.notLoaded')}</div>`);
+    return;
+  }
+
+  const place = currentEntity().name;
+  box.innerHTML = `
+    <div class="qh">${t('chiphead.other')} · ${esc(name)}</div>
+    <div style="color:var(--ink-dim);font-size:11.5px;line-height:1.5">${t('ask.intro')}</div>
+    <input id="askq" type="text" placeholder="${esc(t('ask.placeholder',{place}))}" autocomplete="off">
+    <div class="chips">
+      <button class="chip" data-go="who">${t('ask.who')}</button>
+      <button class="chip" data-go="cdc">${t('ask.cdc')}</button>
+    </div>`;
+
+  const go = which=>{
+    const q = ($('#askq').value || '').trim();
+    const term = encodeURIComponent(`${name} ${place} ${q}`.trim());
+    const url = which === 'who'
+      ? 'https://www.who.int/home/search?indexCatalogue=genericsearchindex1&searchQuery=' + term
+      : 'https://search.cdc.gov/search/?query=' + term;
+    window.open(url, '_blank', 'noopener');
+  };
+  box.querySelectorAll('[data-go]').forEach(b => b.onclick = ()=> go(b.dataset.go));
+  $('#askq').onkeydown = e => { if(e.key === 'Enter') go('who'); };
+}
+
+/* ── the report log ────────────────────────────────────────────────────────
+   Every disease-at-a-place is one line, with its age in the gutter. Age is
+   the first thing you read, because a stale figure is the failure mode that
+   actually bites this project.                                              */
+
+function feedRows(){
+  const rows = [];
+  for(const [iso, rec] of Object.entries(SEED.countries || {})){
+    const cf = S.countries?.features.find(f => isoOf(f) === iso);
+    const place = cf ? nameOf(cf) : iso;
+    (rec.diseases || []).forEach(d=>{
+      rows.push({ level:'country', iso, place, region:null, key:iso,
+        name:d.name, sev:diseaseSeverity(d) ?? entitySeverity(rec),
+        asOf:d.asOf, cases:d.cases, routine:!!d.routine });
+    });
+  }
+  for(const [key, rec] of Object.entries(SEED.admin1 || {})){
+    const [iso, region] = key.split(':');
+    (rec.diseases || []).forEach(d=>{
+      rows.push({ level:'state', iso, place:region, region, key,
+        name:d.name, sev:diseaseSeverity(d) ?? entitySeverity(rec),
+        asOf:d.asOf, cases:d.cases, routine:!!d.routine });
+    });
+  }
+  for(const [key, rec] of Object.entries(SEED.cities || {})){
+    const [iso, city] = key.split(':');
+    (rec.diseases || []).forEach(d=>{
+      rows.push({ level:'city', iso, place:city, region:null, key,
+        name:d.name, sev:diseaseSeverity(d) ?? entitySeverity(rec),
+        asOf:d.asOf, cases:d.cases, routine:!!d.routine });
+    });
+  }
+  return rows;
+}
+
+function renderFeed(){
+  const rows = feedRows();
+  const sorters = {
+    recent:   (a,b) => (ageDays(a.asOf) ?? 99999) - (ageDays(b.asOf) ?? 99999),
+    severity: (a,b) => (b.sev ?? -1) - (a.sev ?? -1),
+    stale:    (a,b) => (ageDays(b.asOf) ?? -1) - (ageDays(a.asOf) ?? -1)
+  };
+  rows.sort(sorters[S.sort] || sorters.recent);
+
+  const routineCount = rows.filter(r => r.routine).length;
+  $('#routinecount').textContent = routineCount
+    ? t(S.showRoutine ? 'filter.shown' : 'filter.hidden', {n:routineCount})
+    : '';
+
+  const counted = S.showRoutine ? rows : rows.filter(r => !r.routine);
+  const vis = counted.filter(r => (r.sev ?? 0) >= S.threshold);
+
+  const dated = counted.map(r => ageDays(r.asOf)).filter(v => v != null);
+  const newest = dated.length ? Math.min(...dated) : null;
+  const undated = counted.length - dated.length;
+  const places = new Set(counted.map(r => r.key)).size;
+
+  $('#feedcount').textContent = vis.length === counted.length
+    ? String(counted.length)
+    : `${vis.length} / ${counted.length}`;
+
+  $('#footstat').textContent = dated.length
+    ? t('foot.stat', {n:counted.length, c:places, age:ago(newest)})
+      + (undated ? ' · ' + t('feed.undated', {n:undated}) : '')
+    : t('feed.headNoDates', {n:counted.length});
+
+  $('#feedlist').innerHTML = vis.length ? vis.map(r=>{
+    const tr = tierOf(r.sev);
+    const f  = freshness(r.asOf);
+    return `<button class="fitem" data-iso="${esc(r.iso)}" data-region="${esc(r.region||'')}" data-disease="${esc(r.name)}">
+      <span class="fage" style="color:${f.hex}">${esc(f.short)}</span>
+      <span class="fbody" style="--tick:${tr.hex}">
+        <span class="ftitle" dir="auto">${esc(r.name)}<span class="fplace"> — ${esc(r.place)}</span></span>
+        <span class="fmeta">
+          <span class="lv">${t('level.'+r.level)}</span>
+          ${r.routine ? `<span class="lv" style="opacity:.6">${t('tag.routine')}</span>` : ''}
+          <span>${r.cases != null ? t('cases',{n:fmt(r.cases)}) : t('nocount')}</span>
+          <span style="color:${tr.hex}">${esc(tierLabel(r.sev))}</span>
+        </span>
+      </span>
+    </button>`;
+  }).join('') : `<div class="fempty">${t('feed.empty', {n:S.threshold})}</div>`;
+
+  $('#feedlist').querySelectorAll('.fitem').forEach(el=>{
+    el.onclick = ()=>{
+      const iso = el.dataset.iso;
+      const region = el.dataset.region;
+      // open the drawer on the disease the user actually clicked, not the
+      // worst one at that location
+      S.disease = el.dataset.disease || null;
+      S.chip = null;
+      if(window.matchMedia('(max-width:900px)').matches) showSheet(null);
+      if(region){
+        ensureAdmin1();
+        const r = regionByName(iso, region);
+        if(r){ selectAdmin1(iso, r); return; }
+      }
+      selectCountry(iso);
+    };
+  });
+}
+
+/* ── the spine ─────────────────────────────────────────────────────────────
+   Legend, distribution and filter in one control: how many countries sit in
+   each tier, and clicking a tier raises the feed threshold to it.           */
+
+function renderSpine(){
+  const counts = [0,0,0,0,0];
+  S.entities.forEach(e=>{
+    if(e.level!=='country' || e.sev==null) return;
+    counts[tierIndex(e.sev)]++;
+  });
+  const mx = Math.max(1, ...counts);
+  const mins = [0,20,40,60,80];
+
+  $('#tierrows').innerHTML = TIERS.map((tier,i)=>`
+    <button class="tierrow ${S.threshold > mins[i] ? 'dimmed' : ''}" data-min="${mins[i]}">
+      <span class="tname">${esc(t('tier.'+i))}</span>
+      <span class="tbarwrap"><span class="tbar" style="width:${Math.max(2,(counts[i]/mx)*100)}%;background:${tier.hex}"></span></span>
+      <span class="tcount">${counts[i]||''}</span>
+    </button>`).join('');
+
+  $('#tierrows').querySelectorAll('.tierrow').forEach(b=>{
+    b.onclick = ()=>{
+      const min = +b.dataset.min;
+      S.threshold = (S.threshold === min) ? 0 : min;
+      $('#thr').value = S.threshold; $('#thrval').textContent = S.threshold;
+      renderFeed(); renderSpine();
+    };
+  });
+
+  $('#legnote').innerHTML =
+    `${esc(t('legend.hatched'))}<br>${esc(t('legend.edge'))}<br>${esc(t('legend.saturation'))}`;
+}
+
+function renderCrumbs(){
+  const v = S.view, out = [];
+  out.push({t:t('crumb.world'), fn:goWorld, now:v.level==='world'});
+  if(v.continent) out.push({t:continentLabel(v.continent), fn:()=>selectContinent(v.continent), now:v.level==='continent'});
+  if(v.iso){
+    const f = S.countries?.features.find(x=>isoOf(x)===v.iso);
+    out.push({t:f?nameOf(f):v.iso, fn:()=>selectCountry(v.iso), now:v.level==='country'});
+  }
+  if(v.region) out.push({t:v.region, now:v.level==='admin1'});
+  if(v.city)   out.push({t:v.city, now:true});
+  const c = $('#crumbs'); c.innerHTML = '';
+  out.forEach((o,i)=>{
+    if(i) c.insertAdjacentHTML('beforeend','<span class="sep">›</span>');
+    const b = document.createElement('button');
+    b.className = 'cr'+(o.now?' now':''); b.textContent = o.t;
+    if(o.fn) b.onclick = o.fn;
+    c.appendChild(b);
+  });
+  document.body.classList.toggle('deep', v.level !== 'world');
+  $('#zoomstate').textContent = zoomHint();
+}
+
+/* Says what tier you're on AND what the next scroll would reveal. */
+function zoomHint(){
+  if(S._a1failed) return t('zoom.statesMissing');
+  const lod = currentLOD();
+  if(lod === 'world')  return `${t('zoom.countries')} · ${t('zoom.nextStates')}`;
+  if(lod === 'region') return S.admin1 ? `${t('zoom.states')} · ${t('zoom.nextCities')}`
+                                       : `${t('zoom.states')} · ${t('zoom.loading')}…`;
+  return S.cities ? t('zoom.cities') : `${t('zoom.cities')} · ${t('zoom.loading')}…`;
+}
+
+function renderLabels(){
+  const box = $('#labels'); box.innerHTML='';
+  const lod = currentLOD();
+  let list = [];
+
+  if(lod === 'city' && S.cities){
+    // Only label the tiers that have faded in, and cap the count, so the
+    // view never turns into a wall of text. Tier 0 = capitals + megacities.
+    const c = fadeIn(cam.z, FADE.city.hi, FADE.city.lo);
+    const maxTier = cam.z < 1.45 ? 2 : (cam.z < 1.65 ? 1 : 0);
+    if(c > 0.15){
+      list = S.cities
+        .filter(x => x[3] <= maxTier)
+        .slice(0, 400)
+        .map(x => ({
+          name:x[0], lat:x[2], lon:x[1], city:true,
+          sev: S.entities.get(x[4] + ':' + x[0])?.sev ?? null
+        }));
+    }
+  } else if(lod !== 'world' && S.countries){
+    list = S.countries.features
+      .filter(f => SEED.countries[isoOf(f)])
+      .map(f=>{ const c = centroidOf(f); return {name:nameOf(f), lat:c.lat, lon:c.lon, sev:S.entities.get(isoOf(f))?.sev}; });
+  }
+  const camDir = new THREE.Vector3(0,0,1);
+  const onScreen = [];
+  for(const it of list){
+    const p = latLonToVec(it.lat, it.lon, R*1.005);
+    const w = p.clone().applyMatrix4(spin.matrixWorld);
+    if(w.clone().normalize().dot(camDir) < 0.12) continue;    // back of the globe
+    const s = w.clone().project(camera);
+    if(Math.abs(s.x) > 1 || Math.abs(s.y) > 1) continue;
+    onScreen.push({ it, x:(s.x*0.5+0.5)*wellW, y:(-s.y*0.5+0.5)*wellH,
+                    d: s.x*s.x + s.y*s.y });
+  }
+  // nearest the centre of the view wins, and stop at a readable number
+  onScreen.sort((a,b) => a.d - b.d);
+  const LIMIT = 34;
+  const placed = [];
+  for(const o of onScreen){
+    if(placed.length >= LIMIT) break;
+    // crude de-clutter: skip anything sitting on top of a label already placed
+    if(placed.some(q => Math.abs(q.x-o.x) < 68 && Math.abs(q.y-o.y) < 15)) continue;
+    placed.push(o);
+    const el = document.createElement('div');
+    el.className = 'lbl';
+    el.style.left = o.x + 'px';
+    el.style.top  = o.y + 'px';
+    el.innerHTML = `<i style="background:${tierOf(o.it.sev).hex}"></i>${esc(o.it.name)}`;
+    box.appendChild(el);
+  }
+}
+
+function refresh(){
+  const lod = currentLOD();
+  if(lod !== lastLOD || S.view.iso !== lastFocus){
+    lastLOD = lod; lastFocus = S.view.iso; S.lod = lod;
+    paint(); rebuildBorders();
+  }
+  renderCrumbs(); renderInfo(); renderFeed(); renderSpine();
+}
+
+function note(msg){
+  const el = $('#stale'); el.textContent = msg; el.style.display='block';
+  clearTimeout(el._t); el._t = setTimeout(()=>el.style.display='none', 7000);
+}
+
+/* The FAQ chips answer from the same guidance entry the tabs use, which works
+   offline and needs no key. Kept for a future assistant panel; point it at
+   your own /api/ask route — the browser cannot call an LLM provider directly
+   without exposing the key. */
+function askAssistant(kind, disease, place){
+  note(`Assistant not connected — wire askAssistant() to your /api/ask route. (${kind} · ${disease||'—'} · ${place})`);
+}
+
+/* ── 14. LOOP ─────────────────────────────────────────────────────────── */
+
+let lastLabelPaint = 0;
+function tick(){
+  requestAnimationFrame(tick);
+  cam.rx += (cam.trx - cam.rx)*0.12;
+  cam.ry += (cam.try_ - cam.ry)*0.12;
+  cam.z  += (cam.tz  - cam.z )*0.10;
+  tilt.rotation.x = cam.rx;
+  spin.rotation.y = cam.ry;
+  camera.position.z = cam.z;
+  updateDetailLayers();
+  const lod = currentLOD();
+  if(lod !== lastLOD){
+    lastLOD = lod; S.lod = lod;
+    paint(); renderCrumbs();
+  }
+  spin.updateMatrixWorld();
+  const now = performance.now();
+  if(now - lastLabelPaint > 50){ lastLabelPaint = now; renderLabels(); }
+  renderer.render(scene, camera);
+}
+
+/* ── 15. CHROME ───────────────────────────────────────────────────────── */
+
+function showSheet(which){
+  document.body.classList.remove('sheet-reports','sheet-selection');
+  if(which) document.body.classList.add('sheet-'+which);
+  document.querySelectorAll('#sheettabs button').forEach(b=>
+    b.classList.toggle('on', b.dataset.sheet === which));
+  onResize();
+}
+
+function bindUI(){
+  // appearance + language
+  document.querySelectorAll('[data-theme-set]').forEach(b=>
+    b.onclick = ()=> setTheme(b.dataset.themeSet));
+  $('#langsel').onchange = e => setLang(e.target.value);
+
+  // filters
+  $('#thr').oninput = e=>{ S.threshold = +e.target.value; $('#thrval').textContent = e.target.value; renderFeed(); renderSpine(); };
+  $('#showroutine').onchange = e=>{ S.showRoutine = e.target.checked; renderFeed(); };
+  document.querySelectorAll('#feedsort button').forEach(b=>{
+    b.onclick = ()=>{
+      document.querySelectorAll('#feedsort button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on'); S.sort = b.dataset.sort; renderFeed();
+    };
+  });
+
+  // drawer tabs
+  document.querySelectorAll('#tabs button').forEach(b=>{
+    b.onclick = ()=>{
+      document.querySelectorAll('#tabs button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on'); S.tab = b.dataset.tab; renderInfo();
+    };
+  });
+
+  // panels
+  $('#focusbtn').onclick = ()=>{
+    document.body.classList.toggle('focus');
+    $('#focusbtn').textContent = document.body.classList.contains('focus') ? t('focus.show') : t('focus.hide');
+    onResize();
+  };
+  $('#backbtn').onclick = goUp;
+  document.querySelectorAll('#sheettabs button').forEach(b=>{
+    b.onclick = ()=> showSheet(document.body.classList.contains('sheet-'+b.dataset.sheet) ? null : b.dataset.sheet);
+  });
+
+  // entry screen
+  $('#enterbtn').onclick = enterMap;
+}
+
+function enterMap(){
+  const e = $('#entry');
+  if(!e || e.classList.contains('gone')) return;
+  e.classList.add('gone');
+  setTimeout(()=>{ e.style.display = 'none'; onResize(); }, 480);
+  onResize();
+}
+
+function progress(p, key){
+  $('#bootbar').style.width = p+'%';
+  const btn = $('#enterbtn');
+  if(p >= 100){
+    btn.disabled = false;
+    btn.querySelector('span').textContent = t('enter');
+    btn.focus({preventScroll:true});
+  } else if(key){
+    btn.querySelector('span').textContent = t(key);
+  }
+}
+
+/* ═══ THE INTEGRATION POINT ═══════════════════════════════════════════════
+   Replace the body of this function with a fetch of your pipeline's output.
+   Keep the shape identical to SEED and nothing else needs to change.
+   ═══════════════════════════════════════════════════════════════════════ */
+async function loadData(){
+  try{
+    const r = await fetch('/api/outbreaks', { cache:'no-store' });
+    if(!r.ok) throw new Error(r.status);
+    const j = await r.json();
+    Object.assign(SEED, j);
+    console.log('Live data loaded:', Object.keys(j.countries||{}).length, 'countries');
+  }catch(e){
+    console.warn('Scraper unreachable, using bundled snapshot:', e);
+    note(t('note.offline'));
+  }
+  return SEED;
+}
+
+async function boot(){
+  setLang(pickLang(), false);
+  setTheme(THEME_PREF, false);
+  bindUI();
+  initScene(); bindInput();
+  setTheme(THEME_PREF);          // now that the GL objects exist
+
+  progress(15, 'boot.boundaries');
+  try{
+    S.countries = await fetchFirst(GEO.countries);
+  }catch(err){
+    $('#enterbtn').querySelector('span').textContent = t('boot.failed');
+    return;
+  }
+  progress(55, 'boot.indexing');
+  S.countries.features.forEach(f=>{
+    const iso = isoOf(f), cont = contOf(f);
+    S.byISO.set(iso, {name:nameOf(f), cont, pop:f.properties.POP_EST || 1});
+    if(!S.continents.has(cont)) S.continents.set(cont, []);
+    S.continents.get(cont).push(iso);
+  });
+
+  progress(72, 'boot.applying');
+  await loadData();
+  buildEntities();
+
+  progress(88, 'boot.painting');
+  paint();
+  rebuildBorders();
+  refresh();
+  tick();
+
+  progress(100);
+
+  // Pull the state and city datasets straight away, in the background, so
+  // there's no stall the first time someone zooms in.
+  ensureAdmin1();
+  ensureCities();
+
+  const age = Math.round((Date.now()-new Date(SEED.updated))/86400000);
+  if(age > 7) note(t('note.old', {n:age}));
+}
+
+boot();
+</script>
+</body>
+</html>
