@@ -278,15 +278,17 @@ a:hover{color:var(--ink)}
 .freshdot{width:5px;height:5px;border-radius:50%;flex:none}
 
 /* drawer */
-#drawer{border-block-start:1px solid var(--hairline);display:flex;flex-direction:column;min-height:0;max-height:48%}
-#tabs{display:flex;background:var(--console-2)}
+#drawer{border-block-start:1px solid var(--hairline);display:flex;flex-direction:column;
+  min-height:132px;max-height:52%;flex:none}
+#tabs{display:flex;flex:none;background:var(--console-2)}
 #tabs button{
   flex:1;padding:9px 3px;font-family:var(--font-num);font-size:8.5px;letter-spacing:.1em;
   text-transform:uppercase;color:var(--ink-dim);border-block-end:2px solid transparent;
 }
 #tabs button:hover{color:var(--ink-mute)}
 #tabs button.on{color:var(--ink);border-block-end-color:var(--s2);background:var(--console)}
-#dsel{display:flex;gap:5px;padding:8px 12px;overflow-x:auto;border-block-end:1px solid var(--hairline)}
+#dsel{display:flex;flex:none;gap:5px;padding:8px 12px;overflow-x:auto;
+  border-block-end:1px solid var(--hairline);scrollbar-width:none}
 #dsel::-webkit-scrollbar{height:0}
 #dsel button{
   white-space:nowrap;font-size:11px;padding:4px 9px;border:1px solid var(--hairline);
@@ -295,17 +297,24 @@ a:hover{color:var(--ink)}
 #dsel button:hover{color:var(--ink-mute)}
 #dsel button.on{color:var(--ink);border-color:var(--hairline-hi);background:var(--console-2)}
 #dsel button i{width:5px;height:5px;border-radius:50%;display:inline-block;margin-inline-end:6px;vertical-align:middle}
-#tabbody{padding:12px 16px 14px;overflow-y:auto;font-size:12.5px;line-height:1.55;color:var(--ink-mute);min-height:0}
+#tabbody{flex:1 1 auto;padding:12px 16px 14px;overflow-y:auto;font-size:12.5px;
+  line-height:1.55;color:var(--ink-mute);min-height:0}
 #tabbody ul{list-style:none}
-#tabbody li{padding:6px 0 6px 14px;position:relative;border-block-end:1px solid var(--hairline)}
+#tabbody li{padding-block:6px;padding-inline-start:14px;position:relative;
+  border-block-end:1px solid var(--hairline)}
 #tabbody li:last-child{border-block-end:none}
 #tabbody li::before{content:'';position:absolute;inset-inline-start:0;top:13px;width:6px;height:1px;background:var(--ink-dim)}
-html[dir="rtl"] #tabbody li{padding:6px 14px 6px 0}
 #tabbody li strong{color:var(--ink);font-weight:500}
+.gtagrow{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px}
 .gtag{
   display:inline-flex;align-items:center;gap:5px;font-family:var(--font-num);font-size:8.5px;
-  letter-spacing:.1em;text-transform:uppercase;padding:2px 6px;border:1px solid;border-radius:3px;margin-bottom:9px;
+  letter-spacing:.1em;text-transform:uppercase;padding:2px 6px;border:1px solid;border-radius:3px;
 }
+.glink{
+  font-family:var(--font-num);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-dim);border-bottom:1px solid var(--hairline-hi);padding-bottom:1px;
+}
+.glink:hover{color:var(--ink);border-bottom-color:var(--ink)}
 .gapplied{font-size:10.5px;color:var(--ink-dim);margin-bottom:9px;line-height:1.45}
 .gsrc{margin-top:11px;padding-top:10px;border-top:1px solid var(--hairline);font-size:10.5px;line-height:1.5;color:var(--ink-dim)}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}
@@ -315,9 +324,8 @@ html[dir="rtl"] #tabbody li{padding:6px 14px 6px 0}
 #chipans{margin-top:10px;padding:11px 12px;background:var(--console-2);font-size:12px;line-height:1.5;display:none}
 #chipans .qh{font-family:var(--font-num);font-size:8.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:8px}
 #chipans ul{list-style:none}
-#chipans li{padding:4px 0 4px 12px;position:relative;border:none}
+#chipans li{padding-block:4px;padding-inline-start:12px;position:relative;border:none}
 #chipans li::before{content:'';position:absolute;inset-inline-start:0;top:11px;width:5px;height:1px;background:var(--ink-dim)}
-html[dir="rtl"] #chipans li{padding:4px 12px 4px 0}
 #askq{
   width:100%;margin-top:8px;padding:7px 9px;font-size:12px;background:var(--sunk);
   border:1px solid var(--hairline);color:var(--ink);border-radius:3px;
@@ -616,6 +624,11 @@ en:{
  'note.admin1':'The state boundary file did not load, so states cannot be shown.',
  'note.cities':'The city file did not load, so cities cannot be shown.',
  'foot.stat':'{n} reports · {c} places · newest {age}',
+ 'drawer.machine':'machine translation','drawer.partial':'partly untranslated',
+ 'drawer.translating':'translating…','drawer.noTranslation':'translation unavailable · showing English',
+ 'drawer.showOriginal':'Show English','drawer.showTranslated':'Show translation',
+ 'guidance.disclaimer':'General public-health information drawn from WHO and CDC guidance. Not medical advice — follow your national health authority.',
+ 'note.guidance':'The guidance library did not load. The drawer will fall back to the server copy.',
  'cont.Africa':'Africa','cont.Asia':'Asia','cont.Europe':'Europe','cont.North America':'North America',
  'cont.South America':'South America','cont.Oceania':'Oceania','cont.Antarctica':'Antarctica','cont.Oceans':'Oceans'
 },
@@ -672,6 +685,11 @@ es:{
  'note.admin1':'El archivo de fronteras estatales no se cargó, así que no se pueden mostrar los estados.',
  'note.cities':'El archivo de ciudades no se cargó, así que no se pueden mostrar las ciudades.',
  'foot.stat':'{n} informes · {c} lugares · más reciente {age}',
+ 'drawer.machine':'traducción automática','drawer.partial':'parcialmente sin traducir',
+ 'drawer.translating':'traduciendo…','drawer.noTranslation':'traducción no disponible · se muestra en inglés',
+ 'drawer.showOriginal':'Ver en inglés','drawer.showTranslated':'Ver traducción',
+ 'guidance.disclaimer':'Información general de salud pública basada en las orientaciones de la OMS y los CDC. No es consejo médico: siga a su autoridad sanitaria nacional.',
+ 'note.guidance':'La biblioteca de orientaciones no se cargó. El panel usará la copia del servidor.',
  'cont.Africa':'África','cont.Asia':'Asia','cont.Europe':'Europa','cont.North America':'América del Norte',
  'cont.South America':'América del Sur','cont.Oceania':'Oceanía','cont.Antarctica':'Antártida','cont.Oceans':'Océanos'
 },
@@ -728,6 +746,11 @@ fr:{
  'note.admin1':'Le fichier des frontières régionales n’a pas été chargé, les régions ne peuvent pas s’afficher.',
  'note.cities':'Le fichier des villes n’a pas été chargé, les villes ne peuvent pas s’afficher.',
  'foot.stat':'{n} signalements · {c} lieux · plus récent {age}',
+ 'drawer.machine':'traduction automatique','drawer.partial':'partiellement non traduit',
+ 'drawer.translating':'traduction…','drawer.noTranslation':'traduction indisponible · affichage en anglais',
+ 'drawer.showOriginal':'Voir en anglais','drawer.showTranslated':'Voir la traduction',
+ 'guidance.disclaimer':'Informations générales de santé publique tirées des recommandations de l’OMS et des CDC. Ceci n’est pas un avis médical — suivez votre autorité sanitaire nationale.',
+ 'note.guidance':'La bibliothèque de recommandations n’a pas été chargée. Le panneau utilisera la copie du serveur.',
  'cont.Africa':'Afrique','cont.Asia':'Asie','cont.Europe':'Europe','cont.North America':'Amérique du Nord',
  'cont.South America':'Amérique du Sud','cont.Oceania':'Océanie','cont.Antarctica':'Antarctique','cont.Oceans':'Océans'
 },
@@ -784,6 +807,11 @@ pt:{
  'note.admin1':'O arquivo de fronteiras estaduais não carregou, então os estados não podem ser exibidos.',
  'note.cities':'O arquivo de cidades não carregou, então as cidades não podem ser exibidas.',
  'foot.stat':'{n} relatos · {c} locais · mais recente {age}',
+ 'drawer.machine':'tradução automática','drawer.partial':'parcialmente sem tradução',
+ 'drawer.translating':'traduzindo…','drawer.noTranslation':'tradução indisponível · exibindo em inglês',
+ 'drawer.showOriginal':'Ver em inglês','drawer.showTranslated':'Ver tradução',
+ 'guidance.disclaimer':'Informação geral de saúde pública baseada nas orientações da OMS e do CDC. Não é aconselhamento médico — siga a autoridade de saúde do seu país.',
+ 'note.guidance':'A biblioteca de orientações não carregou. O painel usará a cópia do servidor.',
  'cont.Africa':'África','cont.Asia':'Ásia','cont.Europe':'Europa','cont.North America':'América do Norte',
  'cont.South America':'América do Sul','cont.Oceania':'Oceania','cont.Antarctica':'Antártida','cont.Oceans':'Oceanos'
 },
@@ -840,6 +868,11 @@ zh:{
  'note.admin1':'省/州边界文件未能加载，无法显示省/州。',
  'note.cities':'城市文件未能加载，无法显示城市。',
  'foot.stat':'{n} 条通报 · {c} 个地点 · 最新 {age}',
+ 'drawer.machine':'机器翻译','drawer.partial':'部分未翻译',
+ 'drawer.translating':'正在翻译…','drawer.noTranslation':'无法翻译 · 显示英文原文',
+ 'drawer.showOriginal':'查看英文原文','drawer.showTranslated':'查看译文',
+ 'guidance.disclaimer':'基于世界卫生组织和美国 CDC 指南的公共卫生一般信息。本站不提供医疗建议，请遵循所在国卫生主管部门的指导。',
+ 'note.guidance':'指南资料未能加载，面板将改用服务器上的副本。',
  'cont.Africa':'非洲','cont.Asia':'亚洲','cont.Europe':'欧洲','cont.North America':'北美洲',
  'cont.South America':'南美洲','cont.Oceania':'大洋洲','cont.Antarctica':'南极洲','cont.Oceans':'海洋'
 },
@@ -896,6 +929,11 @@ hi:{
  'note.admin1':'राज्य सीमाओं की फ़ाइल लोड नहीं हुई, इसलिए राज्य नहीं दिखाए जा सकते।',
  'note.cities':'शहरों की फ़ाइल लोड नहीं हुई, इसलिए शहर नहीं दिखाए जा सकते।',
  'foot.stat':'{n} रिपोर्टें · {c} स्थान · नवीनतम {age}',
+ 'drawer.machine':'मशीनी अनुवाद','drawer.partial':'कुछ हिस्से अनूदित नहीं',
+ 'drawer.translating':'अनुवाद हो रहा है…','drawer.noTranslation':'अनुवाद उपलब्ध नहीं · अंग्रेज़ी में दिखाया जा रहा है',
+ 'drawer.showOriginal':'अंग्रेज़ी देखें','drawer.showTranslated':'अनुवाद देखें',
+ 'guidance.disclaimer':'WHO और CDC के दिशानिर्देशों पर आधारित सामान्य जन-स्वास्थ्य जानकारी। यह चिकित्सकीय सलाह नहीं है — अपने देश के स्वास्थ्य प्राधिकरण का पालन करें।',
+ 'note.guidance':'दिशानिर्देश लाइब्रेरी लोड नहीं हुई। पैनल सर्वर वाली प्रति का उपयोग करेगा।',
  'cont.Africa':'अफ़्रीका','cont.Asia':'एशिया','cont.Europe':'यूरोप','cont.North America':'उत्तरी अमेरिका',
  'cont.South America':'दक्षिण अमेरिका','cont.Oceania':'ओशिनिया','cont.Antarctica':'अंटार्कटिका','cont.Oceans':'महासागर'
 },
@@ -952,6 +990,11 @@ ar:{
  'note.admin1':'لم يُحمَّل ملف حدود الولايات، لذا لا يمكن عرض الولايات.',
  'note.cities':'لم يُحمَّل ملف المدن، لذا لا يمكن عرض المدن.',
  'foot.stat':'{n} تقريرًا · {c} موقعًا · الأحدث {age}',
+ 'drawer.machine':'ترجمة آلية','drawer.partial':'مترجَم جزئيًا',
+ 'drawer.translating':'جارٍ الترجمة…','drawer.noTranslation':'الترجمة غير متاحة · يُعرض النص الإنجليزي',
+ 'drawer.showOriginal':'عرض الإنجليزية','drawer.showTranslated':'عرض الترجمة',
+ 'guidance.disclaimer':'معلومات عامة في الصحة العامة مستمدة من إرشادات منظمة الصحة العالمية ومراكز مكافحة الأمراض (CDC). ليست نصيحة طبية — اتبع سلطتك الصحية الوطنية.',
+ 'note.guidance':'لم تُحمَّل مكتبة الإرشادات. ستعتمد اللوحة على نسخة الخادم.',
  'cont.Africa':'أفريقيا','cont.Asia':'آسيا','cont.Europe':'أوروبا','cont.North America':'أمريكا الشمالية',
  'cont.South America':'أمريكا الجنوبية','cont.Oceania':'أوقيانوسيا','cont.Antarctica':'أنتاركتيكا','cont.Oceans':'المحيطات'
 }
@@ -974,6 +1017,7 @@ function t(key, vars){
 function setLang(id, repaint = true){
   if(!STR[id]) id = 'en';
   LANG = id;
+  S.original = false;          // the toggle belongs to the language you left
   localStorage.setItem('pt.lang', id);
   const meta = LANGS.find(l => l.id === id) || {};
   document.documentElement.lang = id;
@@ -1336,7 +1380,11 @@ const GEO = {
      (3,978 regions across 218 countries) and shipped in public/data/.
      Cities are the major ones only — capitals, megacities and pop >= 300k. */
   admin1:   ['data/admin1.json'],
-  cities:   ['data/cities.json']
+  cities:   ['data/cities.json'],
+  /* The curated drawer library, generated from api/_guidance.js by
+     `node tools/build-guidance.mjs`. Shipping it means the drawer is right
+     even when the serverless functions are unreachable. */
+  guidance: ['data/guidance.json']
 };
 
 async function fetchFirst(urls){
@@ -1356,8 +1404,10 @@ const S = {
   view:{level:'world', continent:null, iso:null, region:null, city:null},
   lod:'world',          // world | region | city
   hover:null, threshold:0, tab:'treatments', sort:'recent', showRoutine:false,
-  disease:null,         // which disease the bottom-right drawer is describing
+  disease:null,         // which disease the drawer is describing
   chip:null,            // which FAQ chip is expanded, if any
+  original:false,       // drawer is showing the English original, not the translation
+  _gname:null,          // disease the drawer was last built for
   entities:new Map()    // resolved severity per key
 };
 
@@ -2355,104 +2405,165 @@ function renderInfo(){
   renderDrawer(dis);
 }
 
-/* ── THE DRAWER ────────────────────────────────────────────────────────────
-   Every disease on the globe has an entry behind it. The server builds them
-   (api/guidance.js) and hands them over keyed by the exact disease name, so
-   the lookup here is normally a straight hit.
+/* ── THE DRAWER'S CONTENT LAYER ────────────────────────────────────────────
+   Three sources, in this order of authority:
 
-   The three fallbacks below exist for the cases where it isn't: running the
-   page off the bundled snapshot with the scraper down, or a disease name the
-   server's own resolver didn't recognise.
-     1. exact key
-     2. case-insensitive, then longest key contained in the name — this is what
-        makes "Ebola (Bundibugyo virus)" find the "Ebola" entry
-     3. ask the public reference API directly from the browser, cache it, and
-        repaint when it lands
-   ------------------------------------------------------------------------- */
+     1. data/guidance.json — the curated library, shipped with the site and
+        loaded at boot. It is there even when the functions are not, which is
+        the whole point: a disease the library covers must never fall through
+        to an automatic encyclopaedia lookup just because the API timed out.
 
-const gCache = new Map();     // disease name -> entry, for client-side lookups
-const gPending = new Set();   // in-flight lookups, so we don't fire twice
+     2. the `guidance` block inside /api/outbreaks — the same library, plus
+        entries the server auto-compiled for diseases nobody has written up.
 
-function guidanceFor(name){
-  if(!name) return null;
-  const G = SEED.guidance || {};
-  if(G[name]) return G[name];
-  if(gCache.has(name)) return gCache.get(name);
+     3. GET /api/guidance?disease=…&lang=… — one entry at a time. This is what
+        answers the two questions the first two layers cannot: give me this in
+        Spanish, and give me something for a disease that appeared after the
+        payload was built.
 
-  const keys = Object.keys(G).filter(k => !k.startsWith('_'));
-  const lower = name.toLowerCase();
+   Anything not in English comes from layer 3, is labelled as a machine
+   translation, and keeps the English original one click away.
+   ------------------------------------------------------------------------ */
 
-  const ci = keys.find(k => k.toLowerCase() === lower);
-  if(ci) return G[ci];
+const GUIDE = {
+  lib: null,            // { entries, index, rules, fallback } from data/guidance.json
+  cache: new Map(),     // "name|lang" -> record
+  inflight: new Set(),
+  failed: new Set()
+};
 
-  // longest key that appears inside the reported name
-  let best = null;
-  for(const k of keys){
-    const kl = k.toLowerCase();
-    if(lower.includes(kl) && (!best || kl.length > best.length)) best = kl;
+const G_STORE = 'pt.g2.';    // localStorage prefix for fetched and translated entries
+
+/* Same normalisation as api/_guidance.js — hyphens, dashes and parentheses all
+   collapse to spaces, so "Mpox- African region" and "Influenza A(H5N5)" match
+   the same way plain names do. If you change it here, change it there. */
+function gnorm(s){
+  return ' ' + String(s || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9.' ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim() + ' ';
+}
+function gContains(hay, needle){
+  const safe = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('(^| )' + safe + '($| )').test(hay);
+}
+
+function prepareLibrary(json){
+  if(!json || !json.entries) return;
+  GUIDE.lib = {
+    entries: json.entries,
+    index: json.index || [],                       // [needle, key], longest first
+    rules: (json.rules || []).map(r => ({ re: new RegExp(r.re, r.flags || ''), key: r.key })),
+    fallback: json.fallback || null
+  };
+}
+
+/* Longest alias wins, except for the handful of short specific tokens in
+   `rules` — H5N1 has to beat "influenza". */
+function resolveLibrary(name){
+  const lib = GUIDE.lib;
+  if(!lib || !name) return null;
+  const hay = gnorm(name);
+
+  for(const r of lib.rules){
+    if(r.re.test(hay) && lib.entries[r.key]){
+      return { key:r.key, entry:lib.entries[r.key], appliedFrom: gnorm(r.key) === hay ? null : r.key };
+    }
   }
-  if(best){
-    const k = keys.find(x => x.toLowerCase() === best);
-    return { ...G[k], appliedFrom: k };
+  for(const [needle, key] of lib.index){
+    if(gContains(hay, needle) && lib.entries[key]){
+      return { key, entry:lib.entries[key], appliedFrom: gnorm(key) === hay ? null : key };
+    }
   }
   return null;
 }
 
-/* Browser-side version of the server's auto-resolver. Only runs when the
-   server didn't supply an entry — normally never. Same source, same shape. */
-async function autoGuidance(name){
-  if(gCache.has(name) || gPending.has(name)) return;
-  gPending.add(name);
+function readGuideCache(name, lang){
+  const id = name + '|' + lang;
+  if(GUIDE.cache.has(id)) return GUIDE.cache.get(id);
   try{
-    const api = 'https://en.wikipedia.org/w/api.php';
-    const s = await (await fetch(`${api}?action=query&list=search&srsearch=`
-      + encodeURIComponent(name + ' disease') + '&srlimit=1&format=json&origin=*')).json();
-    const title = s?.query?.search?.[0]?.title;
-    if(!title) throw new Error('no article');
-
-    const p = await (await fetch(`${api}?action=query&prop=extracts&explaintext=1&redirects=1&titles=`
-      + encodeURIComponent(title) + '&format=json&origin=*')).json();
-    const extract = Object.values(p?.query?.pages || {})[0]?.extract;
-    if(!extract) throw new Error('no extract');
-
-    const sec = {}; let cur = 'intro'; sec[cur] = '';
-    for(const line of extract.split('\n')){
-      const h = line.match(/^\s*(={2,6})\s*(.+?)\s*\1\s*$/);
-      if(h){ cur = h[2].toLowerCase().trim(); sec[cur] = ''; }
-      else sec[cur] += ' ' + line;
+    const raw = localStorage.getItem(G_STORE + lang + '.' + name);
+    if(raw){
+      const rec = JSON.parse(raw);
+      GUIDE.cache.set(id, rec);
+      return rec;
     }
-    const sent = txt => String(txt||'').replace(/\s+/g,' ').replace(/\[\d+\]/g,'')
-      .split(/(?<=[.!?])\s+(?=[A-Z(])/).map(x=>x.trim())
-      .filter(x => x.length > 40 && x.length < 320);
-    const pick = (cands, n=3) => {
-      for(const w of cands) for(const [h,b] of Object.entries(sec))
-        if(h.includes(w)){ const v = sent(b); if(v.length) return v.slice(0,n); }
-      return [];
-    };
+  }catch(err){ /* unreadable or unavailable storage is not an error worth showing */ }
+  return null;
+}
+function writeGuideCache(name, lang, rec){
+  GUIDE.cache.set(name + '|' + lang, rec);
+  try{ localStorage.setItem(G_STORE + lang + '.' + name, JSON.stringify(rec)); }
+  catch(err){ /* quota full: the in-memory cache still covers this session */ }
+}
 
-    const intro = sent(sec.intro).slice(0,2);
-    const entry = {
-      auto:true,
-      treatments: pick(['treatment','management','therapy']).length ? pick(['treatment','management','therapy']) : intro,
-      travel: ['No travel guidance is published for this disease yet — it is new to this pipeline.',
-               `Check <a href="https://wwwnc.cdc.gov/travel/notices" target="_blank" rel="noopener">CDC travel notices</a> and the WHO advisory before travelling.`],
-      avoid: pick(['transmission','cause','risk factor','spread'],2).map(x=>'Known route of spread: '+x),
-      prevention: pick(['prevention','vaccine','vaccination','control']),
-      symptoms: pick(['signs and symptoms','symptoms','presentation']).length ? pick(['signs and symptoms','symptoms','presentation']) : intro,
-      detection: pick(['diagnosis','screening','testing']),
-      source:'Auto-compiled from public reference sources — unverified',
-      url:'https://en.wikipedia.org/wiki/' + encodeURIComponent(title.replace(/ /g,'_'))
-    };
-    for(const k of ['avoid','prevention','detection']) if(!entry[k].length) entry[k] = ['Not established by the automatic lookup. See the source bulletin.'];
-    gCache.set(name, entry);
-  }catch(e){
-    // Cache the failure too, so the drawer stops saying "looking this one up"
-    // and the lookup isn't retried on every repaint.
-    gCache.set(name, { ...SEED.guidance._default, pending:true,
-      treatments:['No guidance is loaded for this disease and the automatic lookup did not return one.',
-                  'Use the source bulletin linked in the panel above — it is outbreak-specific and more reliable than general advice.'] });
+/* The English entry, from whichever layer has one. */
+function englishGuidance(name){
+  const local = resolveLibrary(name);
+  if(local) return { key:local.key, entry:local.entry, appliedFrom:local.appliedFrom, auto:false, pending:false };
+
+  const api = SEED.guidance?.[name];
+  if(api && !api.pending){
+    return { key:name, entry:api, appliedFrom:api.appliedFrom || null, auto:!!api.auto, pending:false };
+  }
+  const cached = readGuideCache(name, 'en');
+  if(cached && !cached.pending) return cached;
+  return null;
+}
+
+/* What the drawer should show right now, plus how to label it. */
+function drawerGuidance(name){
+  if(!name) return null;
+  const en = englishGuidance(name);
+
+  if(LANG === 'en'){
+    if(en) return { ...en, state:'ready' };
+    if(GUIDE.failed.has(name + '|en')){
+      return { key:name, entry: GUIDE.lib?.fallback || SEED.guidance?._default || {}, pending:true, state:'ready' };
+    }
+    requestGuidance(name, 'en');
+    return en ? { ...en, state:'ready' } : null;
+  }
+
+  const tr = readGuideCache(name, LANG);
+  if(tr && tr.entry){
+    // the server answers with lang:'en' when both translation providers failed
+    const state = (tr.lang === LANG) ? 'ready' : 'untranslated';
+    return { ...tr, state, english: en?.entry || null };
+  }
+  if(GUIDE.failed.has(name + '|' + LANG)){
+    return en ? { ...en, state:'untranslated' } : null;
+  }
+  requestGuidance(name, LANG);
+  return en ? { ...en, state:'translating' } : null;
+}
+
+async function requestGuidance(name, lang){
+  const id = name + '|' + lang;
+  if(GUIDE.inflight.has(id) || GUIDE.failed.has(id) || GUIDE.cache.has(id)) return;
+  GUIDE.inflight.add(id);
+  try{
+    const r = await fetch('/api/guidance?disease=' + encodeURIComponent(name)
+                        + '&lang=' + encodeURIComponent(lang));
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    if(!j || !j.entry) throw new Error('empty response');
+    writeGuideCache(name, lang, {
+      key: j.key || name,
+      entry: j.entry,
+      appliedFrom: j.appliedFrom || null,
+      auto: !!j.auto,
+      pending: !!j.pending,
+      machine: !!j.machine,
+      partial: !!j.partial,
+      lang: j.lang || 'en'
+    });
+  }catch(err){
+    GUIDE.failed.add(id);      // stop asking; the drawer will say what it has
   }finally{
-    gPending.delete(name);
+    GUIDE.inflight.delete(id);
     if(S.disease === name) renderDrawer(currentEntity().rec?.diseases || []);
   }
 }
@@ -2482,6 +2593,7 @@ function renderDrawer(dis){
       (diseaseSeverity(dis.find(d=>d.name===a)) ?? -1))[0];
   }
   const name = S.disease;
+  if(name !== S._gname){ S._gname = name; S.original = false; }
 
   // selector row — only worth showing when there's a choice to make
   if(names.length > 1){
@@ -2492,41 +2604,62 @@ function renderDrawer(dis){
         <i style="background:${tr.hex}"></i>${esc(n)}</button>`;
     }).join('');
     sel.querySelectorAll('button').forEach(b=>{
-      b.onclick = ()=>{ S.disease = b.dataset.d; S.chip = null; renderDrawer(dis); };
+      b.onclick = ()=>{ S.disease = b.dataset.d; S.chip = null; S.original = false; renderDrawer(dis); };
     });
   } else {
     sel.style.display = 'none';
   }
 
-  let g = guidanceFor(name);
-  if(!g){ autoGuidance(name); g = SEED.guidance._default; }
+  const info = drawerGuidance(name);
+  const showEnglish = !!(S.original && info?.english);
+  const g = (showEnglish ? info.english : info?.entry)
+          || GUIDE.lib?.fallback || SEED.guidance?._default || {};
 
   const items = (g[S.tab] || []).filter(Boolean);
 
-  const tag = g.auto
-    ? `<span class="gtag" style="color:${PAL.warn};border-color:${PAL.warn}66;background:${PAL.warn}14">${t('drawer.auto')}</span>`
-    : g.pending
-      ? `<span class="gtag" style="color:var(--ink-dim);border-color:var(--hairline-hi)">${t('drawer.pending')}</span>`
-      : '';
+  /* The label row. Everything the reader needs in order to know how far to
+     trust what is underneath: who wrote it, whether a machine translated it,
+     and whether it is still arriving. */
+  const chip = (colour, text) =>
+    `<span class="gtag" style="color:${colour};border-color:${colour}66">${text}</span>`;
+
+  const tags = [];
+  if(info?.auto)    tags.push(chip(PAL.warn, t('drawer.auto')));
+  if(!info || info.pending) tags.push(chip(PAL.dim, t('drawer.pending')));
+  if(info?.state === 'translating')   tags.push(chip(PAL.dim, t('drawer.translating')));
+  if(info?.state === 'untranslated')  tags.push(chip(PAL.dim, t('drawer.noTranslation')));
+  if(info?.machine && info.state === 'ready' && !showEnglish){
+    tags.push(chip(PAL.dim, t('drawer.machine') + (info.partial ? ' · ' + t('drawer.partial') : '')));
+  }
+  if(info?.machine && info.english){
+    tags.push(`<button class="glink" id="origtoggle">${
+      showEnglish ? t('drawer.showTranslated') : t('drawer.showOriginal')}</button>`);
+  }
+  const tagRow = tags.length ? `<div class="gtagrow">${tags.join('')}</div>` : '';
 
   const applied = g.appliedFrom && g.appliedFrom !== name
     ? `<div class="gapplied">${t('drawer.applied', {src:esc(g.appliedFrom), name:esc(name)})}</div>`
-    : '';
+    : (info?.appliedFrom && info.appliedFrom !== name
+        ? `<div class="gapplied">${t('drawer.applied', {src:esc(info.appliedFrom), name:esc(name)})}</div>`
+        : '');
 
   body.innerHTML = `
-    ${tag}${applied}
+    ${tagRow}${applied}
     ${items.length
       ? `<ul>${items.map(i=>`<li dir="auto">${i}</li>`).join('')}</ul>`
       : `<div style="color:var(--ink-dim);font-size:12px">${t('drawer.noGuidance', {kind:t('guide.'+S.tab), name:esc(name)})}</div>`}
     <div class="gsrc" dir="auto">
       ${esc(g.source || t('sourcePending'))}
       ${g.url ? ` · <a href="${esc(g.url)}" target="_blank" rel="noopener">${t('openSource')}</a>` : ''}
-      <br>${esc(SEED.guidance._disclaimer || '')}
+      <br>${t('guidance.disclaimer')}
     </div>
     <div class="chips">
       ${CHIPS.map(c=>`<button class="chip ${S.chip===c.q?'on':''}" data-q="${c.q}">${t('chip.'+c.q)}</button>`).join('')}
     </div>
     <div id="chipans"></div>`;
+
+  const toggle = body.querySelector('#origtoggle');
+  if(toggle) toggle.onclick = ()=>{ S.original = !S.original; renderDrawer(dis); };
 
   body.querySelectorAll('.chip').forEach(b=>{
     b.onclick = ()=>{ S.chip = (S.chip === b.dataset.q) ? null : b.dataset.q; renderDrawer(dis); };
@@ -2931,6 +3064,13 @@ async function boot(){
   bindUI();
   initScene(); bindInput();
   setTheme(THEME_PREF);          // now that the GL objects exist
+
+  /* The drawer library loads alongside the map rather than after it: it is a
+     static file, it never blocks the globe, and having it in hand is what
+     keeps the drawer off the automatic lookup. */
+  fetchFirst(GEO.guidance)
+    .then(j => { prepareLibrary(j); if(S.countries) renderInfo(); })
+    .catch(() => note(t('note.guidance')));
 
   progress(15, 'boot.boundaries');
   try{

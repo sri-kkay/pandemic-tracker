@@ -10,6 +10,8 @@
    no matter how many people visit your site.
    =========================================================================== */
 
+import { buildGuidance, collectDiseaseNames } from './_guidance.js';
+
 const CACHE_HOURS = 6;
 
 /* ---------------------------------------------------------------------------
@@ -1204,32 +1206,9 @@ async function fetchNICD(){
 
 const BASELINE = {};   // NICD now supplies South Africa directly (§4g)
 
-const GUIDANCE = {
-  'Dengue':{
-    treatments:['No specific antiviral. Paracetamol for fever.','<strong>Avoid ibuprofen and aspirin</strong> — they raise bleeding risk.','Qdenga vaccine is available in some countries.'],
-    travel:['Risk peaks in the rainy season across the Americas and South-East Asia.','Brazil has all four serotypes circulating at once.'],
-    avoid:['Standing water near where you sleep.','Being outdoors unprotected at dawn and dusk.'],
-    prevention:['Repellent with DEET or picaridin.','Window screens and treated bed nets.']
-  },
-  'Measles':{
-    treatments:['No antiviral. Vitamin A reduces mortality in children.'],
-    travel:['Confirm two MMR doses 6–8 weeks before departure.'],
-    avoid:['Crowded indoor spaces during an outbreak — the virus stays airborne for two hours.'],
-    prevention:['Two-dose MMR is about 97% effective.','Isolate cases for four days after rash onset.']
-  },
-  'Cholera':{
-    treatments:['Oral rehydration salts resolve most cases.','IV fluids for severe dehydration.'],
-    travel:['Oral cholera vaccine for travel to active transmission areas.'],
-    avoid:['Untreated water, ice, and raw shellfish.'],
-    prevention:['Boil it, cook it, peel it, or leave it.','Handwash with soap.']
-  },
-  _default:{
-    treatments:['No guidance loaded for this disease yet.'],
-    travel:['Check CDC travel notices and WHO regional advisories.'],
-    avoid:['No advisory loaded.'],
-    prevention:['No guidance loaded.']
-  }
-};
+/* The drawer content used to live here as a three-disease stub. It now lives in
+   guidance.js, which carries a full entry for every disease these adapters can
+   emit and goes and builds one automatically for anything new. See §7 below. */
 
 /* ---------------------------------------------------------------------------
    6. THE HANDLER — this is what runs when the globe calls /api/outbreaks
@@ -1353,12 +1332,35 @@ export default async function handler(req, res){
     if(!countries[iso]) countries[iso] = rec;
   }
 
+  /* -------------------------------------------------------------------------
+     7. GUIDANCE — the bottom-right drawer
+
+     This runs LAST, on purpose. It reads the finished payload, collects every
+     disease name that ended up in it, and returns a drawer entry for each one.
+     Because the list it walks is the same list the feed is built from, there
+     is no way for a disease to appear on the globe without guidance behind it.
+
+     Anything the curated library has never seen gets looked up automatically
+     and comes back tagged auto:true. If that lookup fails or times out, the
+     entry is marked pending and the next request retries it — the response
+     still goes out either way.
+     ----------------------------------------------------------------------- */
+  const payload = { countries, admin1, cities: {} };
+
+  let guidance = {};
+  try{
+    const names = collectDiseaseNames(payload);
+    const g = await buildGuidance(names);
+    guidance = g.guidance;
+    notes.push(...g.notes);
+  }catch(err){
+    notes.push('Guidance build failed: ' + err.message + ' — drawer will show the fallback text');
+  }
+
   res.status(200).json({
     updated: new Date().toISOString(),
-    countries,
-    admin1,
-    cities: {},
-    guidance: GUIDANCE,
+    ...payload,
+    guidance,
     _notes: notes          // open /api/outbreaks and read this to debug
   });
 }
