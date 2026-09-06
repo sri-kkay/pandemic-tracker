@@ -1,9 +1,21 @@
 {
   "cleanUrls": true,
+  "functions": {
+    "api/outbreaks.js": { "maxDuration": 30 },
+    "api/guidance.js": { "maxDuration": 30 }
+  },
   "headers": [
     {
       "source": "/api/outbreaks",
       "headers": [{ "key": "Access-Control-Allow-Origin", "value": "*" }]
+    },
+    {
+      "source": "/api/guidance",
+      "headers": [{ "key": "Access-Control-Allow-Origin", "value": "*" }]
+    },
+    {
+      "source": "/data/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=300, stale-while-revalidate=86400" }]
     }
   ]
 }
