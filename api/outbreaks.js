@@ -15,14 +15,14 @@
    whole response comes back well inside Vercel's 30s function limit.
    =========================================================================== */
 
-import { buildGuidance, collectDiseaseNames } from './guidance.js';
-import { fetchWHO }        from './_lib/adapters/who.js';
-import { fetchERVISS }     from './_lib/adapters/erviss.js';
-import { fetchFluNet }     from './_lib/adapters/flunet.js';
-import { fetchPAHO }       from './_lib/adapters/paho.js';
-import { fetchAfricaCDC }  from './_lib/adapters/africacdc.js';
-import { fetchCDCStates }  from './_lib/adapters/cdc-states.js';
-import { fetchNICD }       from './_lib/adapters/nicd.js';
+import { buildGuidance, collectDiseaseNames } from './_guidance.js';
+import { fetchWHO } from './_lib/adapters/who.js';
+import { fetchERVISS } from './_lib/adapters/erviss.js';
+import { fetchFluNet } from './_lib/adapters/flunet.js';
+import { fetchPAHO } from './_lib/adapters/paho.js';
+import { fetchAfricaCDC } from './_lib/adapters/africacdc.js';
+import { fetchCDCStates } from './_lib/adapters/cdc-states.js';
+import { fetchNICD } from './_lib/adapters/nicd.js';
 
 const CACHE_HOURS = 6;
 
@@ -31,9 +31,9 @@ const CACHE_HOURS = 6;
    Africa directly, so this is currently empty. */
 const BASELINE = {};
 
-function mergeCountries(target, source, defaultConf){
-  for(const [iso, rec] of Object.entries(source)){
-    if(!target[iso]) target[iso] = { conf: defaultConf, diseases: [] };
+function mergeCountries(target, source, defaultConf) {
+  for (const [iso, rec] of Object.entries(source)) {
+    if (!target[iso]) target[iso] = { conf: defaultConf, diseases: [] };
     target[iso].diseases.push(...rec.diseases);
   }
 }
@@ -41,7 +41,7 @@ function mergeCountries(target, source, defaultConf){
 /* Each source runs behind its own settled promise so a rejection never
    blocks the others — Promise.allSettled resolves once every adapter has
    either returned or failed, in parallel, rather than one after another. */
-async function runSources(){
+async function runSources() {
   const [who, erviss, flunet, paho, africacdc, cdcStates, nicd] = await Promise.allSettled([
     fetchWHO(), fetchERVISS(), fetchFluNet(), fetchPAHO(),
     fetchAfricaCDC(), fetchCDCStates(), fetchNICD()
@@ -51,24 +51,24 @@ async function runSources(){
   const countries = {};
   const admin1 = {};
 
-  if(who.status === 'fulfilled'){
+  if (who.status === 'fulfilled') {
     const w = who.value;
     Object.assign(countries, w.countries);
     notes.push(`WHO: read ${w.count} bulletins, matched ${Object.keys(w.countries).length} countries (${w.rescued} from multi-country bulletins)`);
-    if(w.skipped.length){
+    if (w.skipped.length) {
       notes.push(`Not a single country, ignored: ${[...new Set(w.skipped)].join(', ')}`);
     }
   } else {
     notes.push('WHO fetch failed: ' + who.reason.message);
   }
 
-  if(erviss.status === 'fulfilled'){
+  if (erviss.status === 'fulfilled') {
     const eu = erviss.value;
     mergeCountries(countries, eu.countries, 'high');
-    if(!eu.published){
+    if (!eu.published) {
       notes.push(`ERVISS: HIDDEN — newest week ${eu.latest} is about ${eu.age} weeks old. `
         + `Set ERVISS_SHOW_STALE = true to publish it anyway.`);
-    } else if(eu.stale){
+    } else if (eu.stale) {
       notes.push(`ERVISS: matched ${eu.matched} European countries, but newest week is ${eu.latest} `
         + `(~${eu.age} weeks old). ECDC paused GitHub updates during their EpiPulse migration; `
         + `the globe labels every one of these figures with its age. `
@@ -80,7 +80,7 @@ async function runSources(){
     notes.push('ERVISS fetch failed: ' + erviss.reason.message);
   }
 
-  if(flunet.status === 'fulfilled'){
+  if (flunet.status === 'fulfilled') {
     const flu = flunet.value;
     mergeCountries(countries, flu.countries, 'high');
     notes.push(`FluNet: matched ${flu.matched} countries, newest week ${flu.newestWeek}`);
@@ -91,12 +91,12 @@ async function runSources(){
       + ' | column list: https://xmart-api-public.who.int/FLUMART/VIW_FLU_METADATA?$format=csv');
   }
 
-  if(paho.status === 'fulfilled'){
+  if (paho.status === 'fulfilled') {
     const p = paho.value;
     mergeCountries(countries, p.countries, 'high');
     notes.push(`PAHO ARBO: matched ${p.matched} countries in the Americas, `
       + `bulletin ${p.year} through EW ${p.week ?? '?'} (${p.asOf})`);
-    if(p.unmatched.length){
+    if (p.unmatched.length) {
       notes.push(`PAHO names not in the ISO map: ${p.unmatched.join(', ')}`);
     }
   } else {
@@ -105,12 +105,12 @@ async function runSources(){
       + new Date().getUTCFullYear() + '.asp?env=pri');
   }
 
-  if(africacdc.status === 'fulfilled'){
+  if (africacdc.status === 'fulfilled') {
     const a = africacdc.value;
     mergeCountries(countries, a.countries, 'medium');
     notes.push(`Africa CDC: matched ${a.matched} countries from `
       + `${a.parsedBriefs}/${a.briefs} briefs (via ${a.via})`);
-    if(a.unmatched.length){
+    if (a.unmatched.length) {
       notes.push(`Africa CDC names not in the ISO map: ${a.unmatched.join(', ')}`);
     }
   } else {
@@ -118,12 +118,12 @@ async function runSources(){
       + ' | test it yourself: https://africacdc.org/wp-json/wp/v2/disease-outbreak?per_page=3');
   }
 
-  if(cdcStates.status === 'fulfilled'){
+  if (cdcStates.status === 'fulfilled') {
     const st = cdcStates.value;
     Object.assign(admin1, st.admin1);
     notes.push(`CDC states: matched ${st.matched} US states/jurisdictions, week ending ${st.newest}`);
     notes.push(`CDC state columns detected: ${JSON.stringify(st.columns)}`);
-    if(st.unmatchedLevels.length){
+    if (st.unmatchedLevels.length) {
       notes.push(`CDC activity levels not recognised: ${st.unmatchedLevels.join(', ')}`);
     }
   } else {
@@ -131,29 +131,29 @@ async function runSources(){
       + ' | test it yourself: https://data.cdc.gov/resource/f3zz-zga5.json?$limit=3');
   }
 
-  if(nicd.status === 'fulfilled'){
+  if (nicd.status === 'fulfilled') {
     const za = nicd.value;
     Object.assign(admin1, za.admin1);
     notes.push(`NICD: matched ${za.matched} South African provinces (${za.disease}, `
-      + `${za.used.scope}) from "${za.used.title.slice(0,60)}" dated ${za.used.date}`);
+      + `${za.used.scope}) from "${za.used.title.slice(0, 60)}" dated ${za.used.date}`);
   } else {
     notes.push('NICD fetch failed: ' + nicd.reason.message
       + ' | test it yourself: https://www.nicd.ac.za/wp-json/wp/v2/posts?search=measles&per_page=3');
   }
 
   // merge the baseline in without overwriting anything live
-  for(const [iso, rec] of Object.entries(BASELINE)){
-    if(!countries[iso]) countries[iso] = rec;
+  for (const [iso, rec] of Object.entries(BASELINE)) {
+    if (!countries[iso]) countries[iso] = rec;
   }
 
   return { countries, admin1, notes };
 }
 
-export default async function handler(req, res){
+export default async function handler(req, res) {
   // Tell Vercel's CDN to cache this. WHO gets hit ~4 times a day total.
   res.setHeader(
     'Cache-Control',
-    `public, s-maxage=${CACHE_HOURS*3600}, stale-while-revalidate=86400`
+    `public, s-maxage=${CACHE_HOURS * 3600}, stale-while-revalidate=86400`
   );
 
   const { countries, admin1, notes } = await runSources();
@@ -174,12 +174,12 @@ export default async function handler(req, res){
   const payload = { countries, admin1, cities: {} };
 
   let guidance = {};
-  try{
+  try {
     const names = collectDiseaseNames(payload);
     const g = await buildGuidance(names);
     guidance = g.guidance;
     notes.push(...g.notes);
-  }catch(err){
+  } catch (err) {
     notes.push('Guidance build failed: ' + err.message + ' — drawer will show the fallback text');
   }
 
