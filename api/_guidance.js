@@ -561,7 +561,7 @@ const LIBRARY = {
 
   'Polio': {
     aka: ['poliomyelitis', 'poliovirus', 'cvdpv', 'cvdpv1', 'cvdpv2', 'cvdpv3', 'wild poliovirus', 'wpv1',
-      'vaccine-derived poliovirus', 'circulating vaccine-derived poliovirus', 'acute flaccid paralysis'],
+          'vaccine-derived poliovirus', 'circulating vaccine-derived poliovirus', 'acute flaccid paralysis'],
     treatments: [
       'No cure. Care is supportive: physiotherapy, orthotics, ventilation if breathing muscles are affected.',
       'Paralysis, once established, is permanent in most cases.',
@@ -788,8 +788,8 @@ const LIBRARY = {
 
   'Acute hepatitis of unknown aetiology': {
     aka: ['acute hepatitis of unknown origin', 'hepatitis of unknown aetiology',
-      'acute hepatitis of unknown etiology', 'hepatitis of unknown etiology',
-      'severe acute hepatitis unknown'],
+          'acute hepatitis of unknown etiology', 'hepatitis of unknown etiology',
+          'severe acute hepatitis unknown'],
     treatments: [
       'Supportive liver care; a minority of children have needed transplantation.',
       'Investigate and exclude hepatitis A–E, autoimmune, metabolic and toxic causes first.',
@@ -1269,7 +1269,7 @@ const LIBRARY = {
 
   'Avian influenza A(H5N1)': {
     aka: ['h5n1', 'h5n5', 'h5n6', 'h5n2', 'h7n9', 'h9n2', 'h10n3', 'h3n8', 'avian influenza', 'bird flu',
-      'highly pathogenic avian influenza', 'hpai', 'influenza a(h5', 'influenza a (h5', 'zoonotic influenza'],
+          'highly pathogenic avian influenza', 'hpai', 'influenza a(h5', 'influenza a (h5', 'zoonotic influenza'],
     treatments: [
       'Oseltamivir as early as possible, at a higher dose and for longer than for seasonal flu.',
       'Intensive care support — human H5N1 case fatality has historically been around 50%, though recent dairy-cattle-linked cases in the US have been mild.',
@@ -1912,7 +1912,7 @@ const LIBRARY = {
 
   'Spotted fever rickettsiosis': {
     aka: ['rocky mountain spotted fever', 'rickettsiosis', 'rickettsial disease', 'tick typhus',
-      'mediterranean spotted fever', 'african tick bite fever', 'rickettsia'],
+          'mediterranean spotted fever', 'african tick bite fever', 'rickettsia'],
     treatments: [
       'Doxycycline for everyone, children included — it is the only effective first-line drug and the tooth-staining concern does not apply to a short course.',
       '<strong>Start on suspicion.</strong> Mortality rises steeply if treatment begins after day five, and confirmatory serology is retrospective.',
@@ -2213,28 +2213,28 @@ const FALLBACK = {
    "Influenza", and stops "Ebola (Bundibugyo virus)" collapsing into "Ebola".
    --------------------------------------------------------------------------- */
 
-function norm(s) {
+function norm(s){
   return ' ' + String(s || '')
     .toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9.' ]/g, ' ')        // hyphens, dashes and parentheses all
-    // become spaces, so "Mpox- African
-    // region" and "Influenza A(H5N5)"
-    // normalise the same way as plain text
+                                          // become spaces, so "Mpox- African
+                                          // region" and "Influenza A(H5N5)"
+                                          // normalise the same way as plain text
     .replace(/\s+/g, ' ')
     .trim() + ' ';
 }
 
 const INDEX = [];   // [{ needle, key }] sorted longest needle first
-for (const [key, entry] of Object.entries(LIBRARY)) {
+for(const [key, entry] of Object.entries(LIBRARY)){
   INDEX.push({ needle: norm(key).trim(), key });
-  for (const a of (entry.aka || [])) INDEX.push({ needle: norm(a).trim(), key });
+  for(const a of (entry.aka || [])) INDEX.push({ needle: norm(a).trim(), key });
 }
 INDEX.sort((a, b) => b.needle.length - a.needle.length);
 
 /* Whole-phrase containment. Word boundaries stop "je" matching inside
    "jaundice" and "tb" matching inside "outbreak". */
-function contains(hay, needle) {
+function contains(hay, needle){
   const safe = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp('(^| )' + safe + '($| )').test(hay);
 }
@@ -2251,26 +2251,26 @@ const RULES = [
   // H5, H7, H9, H10 and H3N8 are avian subtypes. H1N1 and H3N2 are seasonal
   // human flu and correctly fall through to the Influenza entry.
   { re: /\b(h(5|7|9)n\d|h10n\d|h3n8)\b/, key: 'Avian influenza A(H5N1)' },
-  { re: /\bsars.?cov.?2\b/, key: 'COVID-19' },
+  { re: /\bsars.?cov.?2\b/,              key: 'COVID-19' },
   { re: /\bcvdpv\d?\b|vaccine.derived poliovirus/, key: 'Polio' }
 ];
 
-export function resolve(name) {
+export function resolve(name){
   const hay = norm(name);
 
-  for (const { re, key } of RULES) {
-    if (re.test(hay)) return { key, entry: LIBRARY[key], exact: norm(key) === hay };
+  for(const { re, key } of RULES){
+    if(re.test(hay)) return { key, entry: LIBRARY[key], exact: norm(key) === hay };
   }
 
-  for (const { needle, key } of INDEX) {
-    if (contains(hay, needle)) {
+  for(const { needle, key } of INDEX){
+    if(contains(hay, needle)){
       return { key, entry: LIBRARY[key], exact: norm(key) === hay };
     }
   }
   return null;
 }
 
-export function libraryKeys() { return Object.keys(LIBRARY); }
+export function libraryKeys(){ return Object.keys(LIBRARY); }
 
 /* ---------------------------------------------------------------------------
    4. THE AUTO-RESOLVER
@@ -2299,12 +2299,12 @@ const UA = 'PandemicTracker/1.0 (student project; contact: YOUR_EMAIL_HERE)';
 
 const autoCache = new Map();   // disease name -> entry | null
 
-async function getJSON(url, ms = 5000) {
+async function getJSON(url, ms = 5000){
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
-  try {
+  try{
     const r = await fetch(url, { headers: { 'user-agent': UA, accept: 'application/json' }, signal: ctrl.signal });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if(!r.ok) throw new Error('HTTP ' + r.status);
     return await r.json();
   } finally {
     clearTimeout(t);
@@ -2312,7 +2312,7 @@ async function getJSON(url, ms = 5000) {
 }
 
 /* Split plain text into sentences without breaking on "e.g." or "P. falciparum". */
-function sentences(text) {
+function sentences(text){
   return String(text)
     .replace(/\s+/g, ' ')
     .replace(/\[\d+\]/g, '')                       // strip footnote markers
@@ -2321,14 +2321,6 @@ function sentences(text) {
     .filter(s => s.length > 40 && s.length < 320);
 }
 
-/* Everything sentences() returns is plain text pulled from an encyclopaedia
-   extract — unlike the hand-written LIBRARY entries above, which deliberately
-   embed <strong>/<em> for emphasis. The front end injects both into innerHTML
-   with no further sanitisation, so anything that didn't come from us must be
-   escaped before it enters an entry, not trusted downstream. */
-function escapeHTML(s) {
-  return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-}
 /* Encyclopaedia articles open their Prevention and Treatment sections with the
    history of the vaccine or the drug. That is interesting and completely
    useless to somebody looking at an outbreak, so it gets dropped. This is the
@@ -2341,38 +2333,39 @@ const NOISE = [
   /\bnamed (after|for)\b/i, /etymolog/i, /\bin the (18|19)\d0s\b/,
   /\bhistor(y|ically)\b/i, /\bnobel\b/i, /\bderived from the\b/i
 ];
-function useful(s) { return !NOISE.some(re => re.test(s)); }
+function useful(s){ return !NOISE.some(re => re.test(s)); }
 
 /* Headings that never contain guidance, whatever they are called. */
 const SKIP_HEADING = /(history|etymolog|society|culture|research|notable|in animals|in other animals|economic|classification|terminolog|references|external links|see also|further reading|media)/;
 
 /* The plain-text extract keeps headings as "== Treatment ==". Turn the whole
    article into { headingLowercased: bodyText }. */
-function sectionise(extract) {
+function sectionise(extract){
   const out = {};
   let current = 'intro';
   out[current] = '';
-  for (const line of String(extract).split('\n')) {
+  for(const line of String(extract).split('\n')){
     const h = line.match(/^\s*(={2,6})\s*(.+?)\s*\1\s*$/);
-    if (h) { current = h[2].toLowerCase().trim(); out[current] = ''; }
+    if(h){ current = h[2].toLowerCase().trim(); out[current] = ''; }
     else { out[current] = (out[current] || '') + ' ' + line; }
   }
   return out;
 }
 
-function pickSection(sections, candidates, limit = 3, prefer = null) {
-  for (const want of candidates) {
-    for (const [heading, body] of Object.entries(sections)) {
-      if (SKIP_HEADING.test(heading)) continue;
+function pickSection(sections, candidates, limit = 3, prefer = null){
+  for(const want of candidates){
+    for(const [heading, body] of Object.entries(sections)){
+      if(SKIP_HEADING.test(heading)) continue;
       const isMatch = heading === want || heading.startsWith(want + ' ') || heading.includes(want);
-      if (!isMatch) continue;
+      if(!isMatch) continue;
 
       let s = sentences(body).filter(useful);
-      if (prefer && s.length > 1) {
+      // sentences that actually sound like guidance go first
+      if(prefer && s.length > 1){
         const hits = s.filter(x => prefer.test(x));
-        if (hits.length) s = [...hits, ...s.filter(x => !prefer.test(x))];
+        if(hits.length) s = [...hits, ...s.filter(x => !prefer.test(x))];
       }
-      if (s.length) return s.slice(0, limit).map(escapeHTML);
+      if(s.length) return s.slice(0, limit);
     }
   }
   return [];
@@ -2382,38 +2375,38 @@ function pickSection(sections, candidates, limit = 3, prefer = null) {
 const PREFER = {
   treatments: /(treat|therap|antibiotic|antiviral|antimicrob|drug|dose|supportive|fluid|hospital|care|vaccine is|given)/i,
   prevention: /(vaccin|prevent|hygien|avoid|prophylax|screen|control|immunis|immuniz|reduce the risk)/i,
-  avoid: /(transmit|transmiss|spread|contact|contaminat|bite|vector|inhal|ingest|exposure)/i,
-  symptoms: /(symptom|sign|fever|pain|rash|cough|onset|present|incubation)/i,
-  detection: /(diagnos|test|pcr|culture|serolog|sample|specimen|laborator|confirm)/i
+  avoid:      /(transmit|transmiss|spread|contact|contaminat|bite|vector|inhal|ingest|exposure)/i,
+  symptoms:   /(symptom|sign|fever|pain|rash|cough|onset|present|incubation)/i,
+  detection:  /(diagnos|test|pcr|culture|serolog|sample|specimen|laborator|confirm)/i
 };
 
-async function findArticle(name) {
+async function findArticle(name){
   // Search on the name itself first. Appending "disease" used to drag queries
   // onto general articles — "Chandipura" would land on vesiculovirus taxonomy.
   const clean = String(name).replace(/\s*[\u2013\u2014-]\s*[^\u2013\u2014-]+$/, '').trim() || name;
   const tokens = clean.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 3);
 
-  for (const q of [clean, clean + ' disease']) {
+  for(const q of [clean, clean + ' disease']){
     const url = `${WIKI_API}?action=query&list=search&srsearch=${encodeURIComponent(q)}`
-      + `&srlimit=3&format=json&origin=*`;
+              + `&srlimit=3&format=json&origin=*`;
     const j = await getJSON(url);
     const hits = j?.query?.search || [];
-    for (const h of hits) {
+    for(const h of hits){
       const title = String(h.title || '');
       const low = title.toLowerCase();
-      if (/^(list of|outline of)/.test(low) || low.includes('disambiguation')) continue;
+      if(/^(list of|outline of)/.test(low) || low.includes('disambiguation')) continue;
       // only accept a title that shares a real word with the disease name
-      if (tokens.length && !tokens.some(w => low.includes(w))) continue;
+      if(tokens.length && !tokens.some(w => low.includes(w))) continue;
       return title;
     }
-    if (hits.length && !tokens.length) return hits[0].title;
+    if(hits.length && !tokens.length) return hits[0].title;
   }
   return null;
 }
 
-async function readArticle(title) {
+async function readArticle(title){
   const url = `${WIKI_API}?action=query&prop=extracts&explaintext=1&redirects=1`
-    + `&titles=${encodeURIComponent(title)}&format=json&origin=*`;
+            + `&titles=${encodeURIComponent(title)}&format=json&origin=*`;
   const j = await getJSON(url, 7000);
   const pages = j?.query?.pages || {};
   const first = Object.values(pages)[0];
@@ -2424,49 +2417,49 @@ async function readArticle(title) {
  * Build a drawer entry for a disease nobody has written one for.
  * Returns an entry object, or null if the lookup produced nothing usable.
  */
-export async function autoFetch(name) {
-  if (autoCache.has(name)) return autoCache.get(name);
+export async function autoFetch(name){
+  if(autoCache.has(name)) return autoCache.get(name);
 
   let entry = null;
-  try {
+  try{
     const title = await findArticle(name);
-    if (title) {
+    if(title){
       const extract = await readArticle(title);
-      if (extract) {
+      if(extract){
         const sec = sectionise(extract);
 
         const treatments = pickSection(sec, ['treatment', 'management', 'therapy', 'medication'], 3, PREFER.treatments);
         const prevention = pickSection(sec, ['prevention', 'vaccine', 'vaccination', 'prophylaxis', 'control'], 3, PREFER.prevention);
-        const avoid = pickSection(sec, ['transmission', 'cause', 'risk factor', 'spread', 'epidemiology'], 2, PREFER.avoid);
-        const symptoms = pickSection(sec, ['signs and symptoms', 'symptoms', 'presentation', 'clinical'], 3, PREFER.symptoms);
-        const detection = pickSection(sec, ['diagnosis', 'diagnostic', 'screening', 'testing'], 3, PREFER.detection);
-        const intro = sentences(sec.intro || '').filter(useful).slice(0, 2).map(escapeHTML);
+        const avoid      = pickSection(sec, ['transmission', 'cause', 'risk factor', 'spread', 'epidemiology'], 2, PREFER.avoid);
+        const symptoms   = pickSection(sec, ['signs and symptoms', 'symptoms', 'presentation', 'clinical'], 3, PREFER.symptoms);
+        const detection  = pickSection(sec, ['diagnosis', 'diagnostic', 'screening', 'testing'], 3, PREFER.detection);
+        const intro      = sentences(sec.intro || '').filter(useful).slice(0, 2);
 
         // Only accept the result if at least two tabs came back with content.
         const filled = [treatments, prevention, avoid].filter(a => a.length).length;
-        if (filled >= 2 || (treatments.length && intro.length)) {
+        if(filled >= 2 || (treatments.length && intro.length)){
           const wikiUrl = 'https://en.wikipedia.org/wiki/' + encodeURIComponent(title.replace(/ /g, '_'));
           const cdcSearch = 'https://search.cdc.gov/search/?query=' + encodeURIComponent(name);
           const whoSearch = 'https://www.who.int/home/search?indexCatalogue=genericsearchindex1&searchQuery='
-            + encodeURIComponent(name);
+                          + encodeURIComponent(name);
 
           entry = {
             auto: true,
             treatments: treatments.length ? treatments
-              : ['No treatment section was found in the automatic lookup. Use the source bulletin.'],
+                      : ['No treatment section was found in the automatic lookup. Use the source bulletin.'],
             travel: [
               `No travel guidance is published for this disease yet — it is new to this pipeline.`,
               `Check the <a href="${cdcSearch}" target="_blank" rel="noopener">CDC notices</a> and the `
-              + `<a href="${whoSearch}" target="_blank" rel="noopener">WHO advisory</a> for this disease before travelling.`,
+                + `<a href="${whoSearch}" target="_blank" rel="noopener">WHO advisory</a> for this disease before travelling.`,
               'Treat the case count in the panel above as the current picture and the source bulletin as authoritative.'
             ],
             avoid: avoid.length ? avoid.map(s => 'Known route of spread: ' + s)
-              : ['Transmission route not established by the automatic lookup. Follow the source bulletin.'],
+                 : ['Transmission route not established by the automatic lookup. Follow the source bulletin.'],
             prevention: prevention.length ? prevention
-              : (intro.length ? intro : ['No prevention section was found in the automatic lookup.']),
+                      : (intro.length ? intro : ['No prevention section was found in the automatic lookup.']),
             symptoms: symptoms.length ? symptoms : intro,
             detection: detection.length ? detection
-              : ['No diagnostic section was found. Contact the national reference laboratory.'],
+                     : ['No diagnostic section was found. Contact the national reference laboratory.'],
             source: 'Auto-compiled from public reference sources — unverified',
             url: wikiUrl
           };
@@ -2483,11 +2476,11 @@ export async function autoFetch(name) {
 
 /* ---------------------------------------------------------------------------
    5. THE ENTRY POINT
- 
+
    Called once per /api/outbreaks request with every disease name that appears
    anywhere in the response. Returns a guidance object keyed by the EXACT names
    the front end will look up, so the browser never has to do any matching.
- 
+
    Budgeting: only unknown names hit the network, they go in parallel, they are
    capped per request, and results are cached in module scope so a warm lambda
    never looks the same disease up twice.
@@ -2495,7 +2488,7 @@ export async function autoFetch(name) {
 
 const AUTO_LIMIT = 12;  // network lookups per request
 
-export async function buildGuidance(names) {
+export async function buildGuidance(names){
   const wanted = [...new Set((names || []).filter(Boolean))];
   const out = {};
   const notes = [];
@@ -2503,14 +2496,14 @@ export async function buildGuidance(names) {
 
   let matched = 0, aliased = 0;
 
-  for (const name of wanted) {
+  for(const name of wanted){
     const hit = resolve(name);
-    if (hit) {
+    if(hit){
       matched++;
       out[name] = hit.exact
         ? hit.entry
         : { ...hit.entry, appliedFrom: hit.key };   // "showing Ebola guidance for Ebola (Bundibugyo virus)"
-      if (!hit.exact) aliased++;
+      if(!hit.exact) aliased++;
     } else {
       unknown.push(name);
     }
@@ -2523,13 +2516,13 @@ export async function buildGuidance(names) {
   let auto = 0, failed = [];
   results.forEach((r, i) => {
     const name = toFetch[i];
-    if (r.status === 'fulfilled' && r.value) { out[name] = r.value; auto++; }
+    if(r.status === 'fulfilled' && r.value){ out[name] = r.value; auto++; }
     else { out[name] = { ...FALLBACK, pending: true }; failed.push(name); }
   });
 
   // Anything past the per-request cap gets the fallback now and a real lookup
   // on the next request, by which point the cache will usually have it.
-  for (const name of unknown.slice(AUTO_LIMIT)) {
+  for(const name of unknown.slice(AUTO_LIMIT)){
     out[name] = { ...FALLBACK, pending: true };
   }
 
@@ -2539,12 +2532,12 @@ export async function buildGuidance(names) {
   notes.push(`Guidance: ${wanted.length} diseases in this dataset — `
     + `${matched} from the curated library (${aliased} matched by alias), `
     + `${auto} auto-compiled, ${wanted.length - matched - auto} unresolved`);
-  if (failed.length) notes.push(`Guidance auto-lookup returned nothing for: ${failed.join(', ')}`);
-  if (unknown.length > AUTO_LIMIT) {
+  if(failed.length)  notes.push(`Guidance auto-lookup returned nothing for: ${failed.join(', ')}`);
+  if(unknown.length > AUTO_LIMIT){
     notes.push(`Guidance: ${unknown.length - AUTO_LIMIT} disease(s) deferred past the per-request `
       + `lookup cap and will resolve on the next call: ${unknown.slice(AUTO_LIMIT).join(', ')}`);
   }
-  if (unknown.length) {
+  if(unknown.length){
     notes.push(`Guidance: consider writing library entries for ${unknown.join(', ')} — `
       + `hand-written entries are better than auto-compiled ones.`);
   }
@@ -2557,11 +2550,11 @@ export async function buildGuidance(names) {
  * countries, states and cities alike. This is what guarantees "every pandemic
  * on the list" is covered, because the list is built from the same data.
  */
-export function collectDiseaseNames(payload) {
+export function collectDiseaseNames(payload){
   const names = new Set();
-  for (const bucket of ['countries', 'admin1', 'cities']) {
-    for (const rec of Object.values(payload[bucket] || {})) {
-      for (const d of (rec.diseases || [])) if (d && d.name) names.add(d.name);
+  for(const bucket of ['countries', 'admin1', 'cities']){
+    for(const rec of Object.values(payload[bucket] || {})){
+      for(const d of (rec.diseases || [])) if(d && d.name) names.add(d.name);
     }
   }
   return [...names];
@@ -2569,15 +2562,15 @@ export function collectDiseaseNames(payload) {
 
 /* ---------------------------------------------------------------------------
    6. ONE ENTRY AT A TIME
- 
+
    api/guidance.js serves the drawer directly when the browser needs a single
    disease — a translation, or a disease the payload was built before anyone
    had heard of. Same resolution order as buildGuidance, one name at a time.
    --------------------------------------------------------------------------- */
 
-export async function entryFor(name) {
+export async function entryFor(name){
   const hit = resolve(name);
-  if (hit) {
+  if(hit){
     return {
       key: hit.key,
       entry: hit.entry,
@@ -2588,21 +2581,21 @@ export async function entryFor(name) {
   }
 
   const auto = await autoFetch(name);
-  if (auto) return { key: name, entry: auto, appliedFrom: null, auto: true, pending: false };
+  if(auto) return { key: name, entry: auto, appliedFrom: null, auto: true, pending: false };
 
   return { key: name, entry: { ...FALLBACK }, appliedFrom: null, auto: false, pending: true };
 }
 
 /* ---------------------------------------------------------------------------
    7. THE BROWSER BUNDLE
- 
+
    tools/build-guidance.mjs calls this and writes the result to
    public/data/guidance.json. The browser loads that file at boot and resolves
    names with exactly the same rules this file uses, so a curated entry never
    depends on the API being up. Regenerate it whenever the LIBRARY changes.
    --------------------------------------------------------------------------- */
 
-export function guidanceBundle() {
+export function guidanceBundle(){
   return {
     version: 2,
     generated: new Date().toISOString(),
