@@ -4,82 +4,41 @@
    Runs on Vercel's servers, not in the browser. That matters: browsers are
    blocked from calling WHO directly (CORS), servers are not.
 
-   Visit /api/outbreaks in your browser to see what it produces. Read the
-   `_notes` array at the bottom of that response before you touch anything:
-   every adapter reports what it matched, what it could not resolve, and a URL
-   you can paste into a browser to check the source yourself.
+   Visit /api/outbreaks in your browser to see what it produces.
 
-   TEN SOURCES, grouped by what they are for:
+   Sources, in the order they run:
+     §4  WHO Disease Outbreak News      global, event-driven
+     §4b ERVISS (ECDC)                  Europe, weekly respiratory surveillance
+     §4c WHO FluNet                     global influenza laboratory data
+     §4d PAHO arbovirus bulletin        the Americas
+     §4e Africa CDC outbreak briefs     Africa
+     §4f US CDC FluView                 US states
+     §4g NICD                           South African provinces
+     §4h US CDC travel health notices   global — this is what reaches Asia,
+                                        the Middle East and the Pacific
+     §4i ReliefWeb (UN OCHA)            global — reaches the countries whose
+                                        own reporting has broken down
+     §4j WHO EMRO outbreak table        the Eastern Mediterranean, when EMRO
+                                        publishes it (see the note in §4j)
+     §4k EMRO country weekly sitreps    Afghanistan, read out of the weekly
+                                        PDF the country office publishes
 
-     global reach     WHO Disease Outbreak News      §4a
-                      CDC Travel Health Notices      §4h   ← graded 1-4
-                      ReliefWeb (OCHA)               §4i   ← ISO-tagged
-     regional depth   ECDC ERVISS       Europe       §4b
-                      WHO FluNet        influenza    §4c
-                      PAHO ARBO         Americas     §4d
-                      Africa CDC        Africa       §4e
-     subnational      US CDC            US states    §4f
-                      NICD              ZA provinces §4g
-     endemic baseline WHO GHO           annual        §4j   ← never painted
+   The last two are advisory sources: they say an outbreak exists without
+   giving case counts, so they run last and only fill gaps a counting source
+   has left empty.
 
-   The first three exist because the middle four leave holes. WHO only covers
-   what it publishes a bulletin about; ERVISS is Europe; PAHO is the Americas
-   and nothing else; Africa CDC is Africa; FluNet is influenza everywhere but
-   only influenza. Everything else — most of Asia, the Pacific, Central Asia,
-   Russia, Türkiye — depended on WHO happening to write about it. §4h and §4i
-   are what closed that.
-
-   §4k carries the WHO surfaces that CANNOT be read programmatically — the
-   Health Emergency Dashboard, the Weekly Epidemiological Record, the
-   per-disease dashboards and EIOS — as a linked attribution layer. Read the
-   comment there before trying to turn any of them into a feed.
-
-   Vercel caches the response for 6 hours, so each agency gets hit a few times
-   a day no matter how many people visit the site.
+   Vercel caches the response for 6 hours, so WHO gets hit a few times a day
+   no matter how many people visit your site.
    =========================================================================== */
 
 import { buildGuidance, collectDiseaseNames } from './_guidance.js';
 
 const CACHE_HOURS = 6;
 
-/* One identity string for every outbound request. Agencies are more tolerant
-   of a scraper that says who it is. Put a real address in before you hand the
-   project in — several of these sites publish a contact policy that asks. */
-const UA = 'PandemicTracker/2.0 (student project; contact: YOUR_EMAIL_HERE)';
-const UA_HEADERS = { 'user-agent': UA };
-
-/* No single fetch may hold the whole response hostage. Each adapter gets its
-   own budget; whatever has not answered by then is dropped and reported in
-   _notes. Vercel kills the function at 60s (see vercel.json), so the sum of
-   these has to stay comfortably under that even in the worst case — which it
-   does, because §6 runs them all at the same time rather than one after
-   another. */
-const ADAPTER_TIMEOUT_MS = 20000;
-
-/* GHO gets longer. Its indicator catalogue is a single large document and
-   the per-indicator pulls are wide, but it never blocks the map: baseline is
-   context, so if it misses the deadline the globe is unaffected. */
-const GHO_TIMEOUT_MS = 28000;
-
 /* ---------------------------------------------------------------------------
    1. COUNTRY NAMES → ISO CODES
-
    WHO writes "Democratic Republic of the Congo". The map needs "COD".
    Add a line here any time the log says a country was skipped.
-
-   ⚠ THE CODES HERE ARE NATURAL EARTH's `ADM0_A3`, NOT ISO 3166.
-
-   They agree for almost every country, but not all of them, and the globe
-   joins on whatever `isoOf()` in index.html pulls off the GeoJSON feature —
-   which is ADM0_A3 first. Two of these used to be wrong, so the records were
-   built correctly and then silently never painted:
-
-       South Sudan   ISO says SSD,  Natural Earth says SDS
-       Kosovo        ISO says XKX,  Natural Earth says KOS
-
-   Both are fixed below. If you ever add a country and it refuses to colour in,
-   this is the first thing to check: open the GeoJSON, find the feature, and
-   read its ADM0_A3 rather than trusting the ISO standard.
    --------------------------------------------------------------------------- */
 
 const ISO = {
@@ -98,11 +57,8 @@ const ISO = {
   'mali':'MLI','mauritania':'MRT','mauritius':'MUS','morocco':'MAR','mozambique':'MOZ',
   'namibia':'NAM','niger':'NER','nigeria':'NGA','rwanda':'RWA','senegal':'SEN',
   'seychelles':'SYC','reunion':'REU','la reunion':'REU','mayotte':'MYT','sierra leone':'SLE','somalia':'SOM','south africa':'ZAF',
-  'south sudan':'SDS','republic of south sudan':'SDS',   // Natural Earth: SDS, not SSD
-  'sudan':'SDN','togo':'TGO','tunisia':'TUN','uganda':'UGA',
+  'south sudan':'SSD','sudan':'SDN','togo':'TGO','tunisia':'TUN','uganda':'UGA',
   'united republic of tanzania':'TZA','tanzania':'TZA','zambia':'ZMB','zimbabwe':'ZWE',
-  'sao tome and principe':'STP','são tomé and príncipe':'STP','sao tome':'STP',
-  'somaliland':'SOL','western sahara':'SAH','saint helena':'SHN',
 
   // Asia
   'afghanistan':'AFG','bangladesh':'BGD','bhutan':'BTN','brunei':'BRN',
@@ -116,14 +72,7 @@ const ISO = {
   'sri lanka':'LKA','syria':'SYR','syrian arab republic':'SYR','taiwan':'TWN',
   'tajikistan':'TJK','thailand':'THA','timor-leste':'TLS','east timor':'TLS',
   'turkey':'TUR','türkiye':'TUR','turkmenistan':'TKM','united arab emirates':'ARE',
-  'uae':'ARE','uzbekistan':'UZB','viet nam':'VNM','vietnam':'VNM','yemen':'YEM',
-  /* Added in the final coverage pass — every one of these was structurally
-     invisible before, because no adapter could resolve the name. */
-  'armenia':'ARM','azerbaijan':'AZE','bahrain':'BHR',
-  'north korea':'PRK',"democratic people's republic of korea":'PRK','dprk':'PRK',
-  'korea':'KOR','hong kong':'HKG','hong kong sar':'HKG','macau':'MAC','macao':'MAC',
-  'palestine':'PSX','state of palestine':'PSX','west bank and gaza':'PSX','gaza':'PSX',
-  'occupied palestinian territory':'PSX',
+  'uzbekistan':'UZB','viet nam':'VNM','vietnam':'VNM','yemen':'YEM',
 
   // Europe
   'albania':'ALB','austria':'AUT','belarus':'BLR','belgium':'BEL',
@@ -136,22 +85,9 @@ const ISO = {
   'poland':'POL','portugal':'PRT','romania':'ROU','russia':'RUS',
   'russian federation':'RUS','serbia':'SRB','slovakia':'SVK','slovenia':'SVN',
   'spain':'ESP','sweden':'SWE','switzerland':'CHE','ukraine':'UKR',
-  'kosovo':'KOS',                                        // Natural Earth: KOS, not XKX
-  'united kingdom':'GBR','united kingdom of great britain and northern ireland':'GBR',
-  'england':'GBR','scotland':'GBR','wales':'GBR','northern ireland':'GBR',
-  'andorra':'AND','liechtenstein':'LIE','monaco':'MCO','san marino':'SMR',
-  'holy see':'VAT','vatican city':'VAT','greenland':'GRL','faroe islands':'FRO',
-  'isle of man':'IMN','guernsey':'GGY','jersey':'JEY','gibraltar':'GIB',
-  'northern cyprus':'CYN','north cyprus':'CYN',
+  'kosovo':'KOS','united kingdom':'GBR','united kingdom of great britain and northern ireland':'GBR',
 
   // Americas
-  /* ⚠ GUF, MTQ, GLP, REU and MYT resolve, but will not colour in. Natural
-     Earth's 110m country file folds the French overseas departments into
-     FRA, so there is no polygon to paint. They are kept because they cost
-     nothing and the moment the globe moves to the 50m file they start
-     working; WHO's "Chikungunya – La Réunion and Mayotte" bulletins are the
-     reason this matters. Do not "fix" it by pointing them at FRA — that would
-     turn mainland France red for an outbreak 9,000 km away. */
   'argentina':'ARG','puerto rico':'PRI','french guiana':'GUF','martinique':'MTQ','guadeloupe':'GLP','bahamas':'BHS','barbados':'BRB','belize':'BLZ','bolivia':'BOL',
   'bolivia (plurinational state of)':'BOL','brazil':'BRA','canada':'CAN','chile':'CHL',
   'colombia':'COL','costa rica':'CRI','cuba':'CUB','dominican republic':'DOM',
@@ -160,54 +96,49 @@ const ISO = {
   'paraguay':'PRY','peru':'PER','suriname':'SUR','trinidad and tobago':'TTO',
   'united states of america':'USA','united states':'USA','uruguay':'URY',
   'venezuela':'VEN','venezuela (bolivarian republic of)':'VEN',
-  /* The eastern Caribbean is where measles and dengue alerts land first and
-     where nothing was resolving before. */
-  'antigua and barbuda':'ATG','dominica':'DMA','grenada':'GRD',
-  'saint kitts and nevis':'KNA','st kitts and nevis':'KNA',
-  'saint lucia':'LCA','st lucia':'LCA',
-  'saint vincent and the grenadines':'VCT','st vincent and the grenadines':'VCT',
-  'aruba':'ABW','curacao':'CUW','curaçao':'CUW','sint maarten':'SXM',
-  'bermuda':'BMU','cayman islands':'CYM','turks and caicos islands':'TCA',
-  'british virgin islands':'VGB','united states virgin islands':'VIR',
-  'us virgin islands':'VIR','anguilla':'AIA','montserrat':'MSR',
-  'falkland islands':'FLK','saint pierre and miquelon':'SPM',
 
   // Oceania
   'australia':'AUS','fiji':'FJI','new zealand':'NZL','papua new guinea':'PNG',
   'samoa':'WSM','solomon islands':'SLB','vanuatu':'VUT',
-  /* The Pacific was completely dark. Measles and dengue move through these
-     islands fast and they show up in CDC travel notices and ReliefWeb. */
-  'american samoa':'ASM','cook islands':'COK','french polynesia':'PYF',
-  'guam':'GUM','kiribati':'KIR','marshall islands':'MHL',
-  'micronesia':'FSM','federated states of micronesia':'FSM',
-  'nauru':'NRU','new caledonia':'NCL','niue':'NIU',
-  'northern mariana islands':'MNP','palau':'PLW','tokelau':'TKL',
-  'tonga':'TON','tuvalu':'TUV','wallis and futuna':'WLF'
+
+  /* ---- countries that could not match before ----------------------------
+     These were missing entirely, so any bulletin naming them was thrown away.
+     Note the codes: the globe resolves a country by Natural Earth's ADM0_A3,
+     which is NOT always the ISO 3166 code. Kosovo draws as KOS, Palestine as
+     PSX, Western Sahara as SAH. Use the code the basemap uses or the country
+     stays hatched no matter how much data you feed it. */
+  'armenia':'ARM','azerbaijan':'AZE','bahrain':'BHR',
+  // spellings the EMRO table uses
+  'islamic republic of iran':'IRN','saudi arabia, kingdom of':'SAU',
+  'northwest syria':'SYR','north-west syria':'SYR','northeast syria':'SYR',
+  'opt':'PSX','the occupied palestinian territory':'PSX',
+  'north korea':'PRK',"democratic people's republic of korea":'PRK','dpr korea':'PRK',
+  'palestine':'PSX','state of palestine':'PSX','occupied palestinian territory':'PSX',
+  'west bank':'PSX','gaza':'PSX','gaza strip':'PSX',
+  'greenland':'GRL','western sahara':'SAH','new caledonia':'NCL',
+  'somaliland':'SOL','northern cyprus':'CYN','falkland islands':'FLK',
+  'sao tome and principe':'STP','são tomé and príncipe':'STP',
+  'monaco':'MCO','andorra':'AND','san marino':'SMR','liechtenstein':'LIE',
+
+  /* ---- small states the 110m basemap does not draw ----------------------
+     A record here shows up in the report list and the dossier, and clicking it
+     selects the country without moving the camera. That is deliberate: a
+     dengue outbreak in Vanuatu or the Marshall Islands is worth reporting even
+     when the island is too small to paint at this scale. Swap in the 50m
+     Natural Earth file if you want the polygons too. */
+  'marshall islands':'MHL','micronesia':'FSM','federated states of micronesia':'FSM',
+  'palau':'PLW','nauru':'NRU','kiribati':'KIR','tuvalu':'TUV','tonga':'TON',
+  'cook islands':'COK','french polynesia':'PYF','american samoa':'ASM','guam':'GUM',
+  'northern mariana islands':'MNP','niue':'NIU','tokelau':'TKL',
+  'wallis and futuna':'WLF','norfolk island':'NFK',
+  'antigua and barbuda':'ATG','dominica':'DMA','grenada':'GRD','saint lucia':'LCA',
+  'saint vincent and the grenadines':'VCT','saint kitts and nevis':'KNA',
+  'aruba':'ABW','curacao':'CUW','curaçao':'CUW','bermuda':'BMU',
+  'cayman islands':'CYM','turks and caicos islands':'TCA',
+  'british virgin islands':'VGB','us virgin islands':'VIR','saint martin':'MAF',
+  'sint maarten':'SXM','anguilla':'AIA','montserrat':'MSR',
+  'hong kong':'HKG','macao':'MAC','macau':'MAC'
 };
-
-/* ---------------------------------------------------------------------------
-   1b. ISO 3166 → NATURAL EARTH
-
-   Some sources hand over a code rather than a name — ReliefWeb tags every
-   report with a proper ISO 3166 alpha-3. Those go through here so they land in
-   the same key space as everything else. Only the codes that actually differ
-   need a line; everything else passes through unchanged.
-   --------------------------------------------------------------------------- */
-
-const ISO3_TO_NE = {
-  SSD:'SDS',   // South Sudan
-  XKX:'KOS', XKO:'KOS',   // Kosovo
-  PSE:'PSX',   // Palestine
-  ESH:'SAH',   // Western Sahara
-  SHN:'SHN'
-};
-
-function neCode(iso3){
-  if(!iso3) return null;
-  const up = String(iso3).toUpperCase().trim();
-  if(!/^[A-Z]{3}$/.test(up)) return null;
-  return ISO3_TO_NE[up] || up;
-}
 
 function toISO(name){
   if(!name) return null;
@@ -334,55 +265,47 @@ function scanForCountries(text){
   return [...found];
 }
 
+/* One user agent for the whole file. Put a real address in it before you
+   demo this: several of these agencies ask for one, and it is how they tell a
+   student project apart from a scraper worth blocking. */
+const UA = 'PandemicTracker/2.0 (student project; contact: YOUR_EMAIL_HERE)';
+
 /* ---------------------------------------------------------------------------
-   3c. MERGING TWO SOURCES THAT REPORT THE SAME THING
+   3c. MERGING ADVISORY SOURCES WITHOUT CREATING DUPLICATES
 
-   Every adapter used to push straight onto `countries[iso].diseases`, which
-   meant a country covered twice ended up with the disease listed twice — and
-   the front end's aggregateDiseases() then added the two case counts together
-   and counted the country twice in its rollup. Adding two more global sources
-   would have made that much worse, so everything now goes through here.
-
-   The rule, in order:
-     1. a record carrying case numbers beats one that carries none;
-     2. failing that, the more recent `asOf` wins;
-     3. the loser's severity is still honoured — the worst assessment of a
-        disease stands, even if the record it came from was thinner. A CDC
-        Level 3 advisory should not be quietly softened by a stale bulletin
-        that happened to have a number in it.
+   A travel notice and a WHO bulletin can describe the same outbreak. The
+   bulletin has numbers, the notice does not, so the bulletin has to win. These
+   two helpers implement that: compare disease names loosely enough that
+   "Monkeypox" and "Mpox" are one disease, then only add if nothing is there.
    --------------------------------------------------------------------------- */
 
-function mergeCountry(countries, iso, entry, conf = 'medium'){
-  if(!iso || !entry || !entry.name) return;
+const DISEASE_ALIAS = {
+  'monkeypox':'mpox', 'covid 19':'covid', 'coronavirus':'covid',
+  'poliomyelitis':'polio', 'acute watery diarrhoea':'cholera'
+};
 
+function diseaseKey(name){
+  const n = String(name).toLowerCase()
+    .replace(/\(.*?\)/g, ' ')                     // drop "(Bundibugyo virus)"
+    .replace(/\b(virus|viral)\s+(disease|infection|fever)\b/g, ' ')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+  return DISEASE_ALIAS[n] || n;
+}
+
+/** Add a record only if that country has no report of the same disease yet.
+ *  Returns true if it was added. */
+function addIfNew(countries, iso, entry, conf){
+  if(!iso || !entry || !entry.name) return false;
   if(!countries[iso]) countries[iso] = { conf, diseases: [] };
-  const rec = countries[iso];
-
-  const key = entry.name.trim().toLowerCase();
-  const at  = rec.diseases.findIndex(d => String(d.name).trim().toLowerCase() === key);
-
-  if(at === -1){ rec.diseases.push(entry); return; }
-
-  const old = rec.diseases[at];
-  const worst = Math.max(old.severity ?? 0, entry.severity ?? 0);
-
-  const oldHasNumbers = old.cases   != null;
-  const newHasNumbers = entry.cases != null;
-
-  let winner;
-  if(newHasNumbers !== oldHasNumbers)      winner = newHasNumbers ? entry : old;
-  else if((entry.asOf || '') > (old.asOf || '')) winner = entry;
-  else                                     winner = old;
-
-  rec.diseases[at] = { ...winner, severity: worst };
+  const key = diseaseKey(entry.name);
+  if(countries[iso].diseases.some(d => diseaseKey(d.name) === key)) return false;
+  countries[iso].diseases.push(entry);
+  return true;
 }
 
-/* Bulk form, for adapters that hand back a whole { iso: {conf, diseases} }. */
-function mergeAll(countries, incoming, conf){
-  for(const [iso, rec] of Object.entries(incoming || {})){
-    for(const d of rec.diseases || []) mergeCountry(countries, iso, d, rec.conf || conf);
-  }
-}
+/* Titles that mean "this is about many countries, read the body" */
+const IS_MULTI = /global|multi-country|region|regional|afro|amro|searo|euro|wpro|emro/i;
 
 /* ---------------------------------------------------------------------------
    4. SOURCE: WHO DISEASE OUTBREAK NEWS
@@ -394,7 +317,11 @@ async function fetchWHO(){
             + '?$orderby=PublicationDateAndTime%20desc&$top=80';
 
   const r = await fetch(url, {
-    headers: { 'accept': 'application/json', 'user-agent': UA }
+    headers: {
+      'accept': 'application/json',
+      // Identify yourself. It is polite and it stops you looking like a bot.
+      'user-agent': 'PandemicTracker/1.0 (student project; contact: YOUR_EMAIL_HERE)'
+    }
   });
   if(!r.ok) throw new Error('WHO returned ' + r.status);
 
@@ -701,7 +628,7 @@ async function fetchFluNet(){
   for(const url of attempts){
     try{
       const r = await fetch(url, {
-        headers: UA_HEADERS
+        headers:{ 'user-agent':'PandemicTracker/1.0 (student project; contact: YOUR_EMAIL_HERE)' }
       });
       if(!r.ok){ lastErr = 'HTTP ' + r.status; continue; }
       const text = await r.text();
@@ -837,7 +764,7 @@ async function fetchPAHO(){
   for(const y of [thisYear, thisYear - 1]){
     try{
       const r = await fetch(`https://ais.paho.org/ha_viz/Arbo/Arbo_Bulletin_${y}.asp?env=pri`, {
-        headers: UA_HEADERS
+        headers:{ 'user-agent':'PandemicTracker/1.0 (student project; contact: YOUR_EMAIL_HERE)' }
       });
       if(!r.ok) continue;
       const body = await r.text();
@@ -1002,7 +929,7 @@ const toInt = s => {
 };
 
 async function fetchAfricaCDC(){
-  const headers = UA_HEADERS;
+  const headers = { 'user-agent':'PandemicTracker/1.0 (student project; contact: YOUR_EMAIL_HERE)' };
   let posts = [];
   let via = 'wp-json';
 
@@ -1168,7 +1095,7 @@ async function fetchCDCStates(){
   for(const url of attempts){
     try{
       const r = await fetch(url, {
-        headers: UA_HEADERS
+        headers:{ 'user-agent':'PandemicTracker/1.0 (student project; contact: YOUR_EMAIL_HERE)' }
       });
       if(!r.ok){ lastErr = 'HTTP ' + r.status; continue; }
       const j = await r.json();
@@ -1295,7 +1222,7 @@ function bestProvinceSentence(body){
 }
 
 async function fetchNICD(){
-  const headers = UA_HEADERS;
+  const headers = { 'user-agent':'PandemicTracker/1.0 (student project; contact: YOUR_EMAIL_HERE)' };
 
   const r = await fetch(
     `https://www.nicd.ac.za/wp-json/wp/v2/posts?search=measles%20rubella%20situation%20report`
@@ -1370,578 +1297,829 @@ async function fetchNICD(){
 }
 
 /* ---------------------------------------------------------------------------
-   4h. SOURCE: CDC TRAVEL HEALTH NOTICES  (fills the whole world)
+   4h. SOURCE: US CDC TRAVEL HEALTH NOTICES
 
-   Everything above this point is regional. WHO covers whatever it happens to
-   publish a bulletin about, ERVISS covers Europe, PAHO the Americas, Africa
-   CDC Africa, and FluNet covers influenza and nothing else. That left roughly
-   sixty countries — most of Asia, all of the Pacific, Russia, Türkiye,
-   Australia — with no adapter at all. They only ever appeared if WHO happened
-   to name them.
+   This is the adapter that fills in Asia and the Pacific.
 
-   This closes that. CDC's travel notices are:
+   The other regional feeds each cover one WHO region — ERVISS Europe, PAHO the
+   Americas, Africa CDC Africa — which left 62 countries and roughly 4.8 billion
+   people reachable only when WHO happens to publish a bulletin about them. CDC
+   posts travel notices for outbreaks anywhere in the world, in a plain RSS feed,
+   and the titles are already structured:
 
-     · global by design — the whole point is to cover everywhere Americans go;
-     · public domain, so no licence to worry about;
-     · keyless, and published as RSS, so no scraping fragility;
-     · already graded 1–4, which drops straight onto the severity ramp.
+       Level 2 - Chikungunya in Sri Lanka
+       Level 1 - Rocky Mountain Spotted Fever in Mexico
+       Level 2 - Clade II Monkeypox in Ghana and Liberia
+       Level 1 - Global Dengue
 
-       https://wwwnc.cdc.gov/travel/rss/notices.xml
+   It is US federal work, so there is no licence to worry about and no key.
 
-   The catch is that a notice is an ASSESSMENT, not a case count — "Level 2:
-   Dengue in Sri Lanka" tells you it is bad, not how bad in numbers. So these
-   records carry `cases: null` and lose to any source that has real figures,
-   which is exactly what mergeCountry() arranges. What they contribute is the
-   floor: a country nobody else covers stops being grey.
-
-   Notices titled "Global Measles" name no country in the title. The body text
-   lists the affected ones, so the same country scanner the WHO multi-country
-   bulletins use is pointed at it. If a notice names nothing, it is dropped
-   rather than smeared across the map.
+   What it does NOT give you is case counts. A notice says "there is an outbreak
+   of X in Y", not how big it is, so every record here carries cases: null and
+   the globe shows "no count" rather than inventing a number. The severity comes
+   from the disease floor plus the CDC notice level, which is exactly what the
+   notice actually tells you.
    --------------------------------------------------------------------------- */
 
-const CDC_TRAVEL_RSS = 'https://wwwnc.cdc.gov/travel/rss/notices.xml';
+const CDC_NOTICES_RSS = 'https://wwwnc.cdc.gov/travel/rss/notices.xml';
 
-/* CDC ran on words before it ran on numbers, and old notices are still live. */
-const CDC_WORD_LEVEL = { watch: 1, alert: 2, warning: 3 };
+/* Minimal RSS reader. The feed is small and well-formed, and pulling in an XML
+   parser for four tags would be silly. */
+function parseRSS(xml){
+  const items = [];
+  const blocks = String(xml).match(/<item\b[\s\S]*?<\/item>/gi) || [];
+  for(const block of blocks){
+    const pick = tag => {
+      const m = block.match(new RegExp('<' + tag + '[^>]*>([\\s\\S]*?)<\\/' + tag + '>', 'i'));
+      if(!m) return '';
+      return m[1]
+        .replace(/<!\[CDATA\[|\]\]>/g, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"')
+        .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    };
+    items.push({ title: pick('title'), link: pick('link'),
+                 date: pick('pubDate'), description: pick('description') });
+  }
+  return items;
+}
 
-/* A notice level is a judgement about travel, so it maps onto the index as a
-   bump rather than a value: the disease still sets the floor. */
-const CDC_LEVEL_BUMP = { 1: 0, 2: 8, 3: 18, 4: 30 };
+function rssDate(s){
+  const d = new Date(s);
+  return Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 10) : null;
+}
 
-/* Longest and most specific first — "Avian influenza" has to be tested before
-   plain "influenza", and "Sudan virus" before "Sudan" can be read as a place.
-   The right-hand side is the exact key the curated library uses, so a match
-   here lands on a real drawer entry instead of the automatic lookup. */
-const GLOBAL_DISEASE_WORDS = [
-  [/avian influenza|bird flu|h5n1|h5n5|h9n2|h7n9/i,        'Avian influenza A(H5N1)'],
-  [/middle east respiratory|\bmers\b/i,                     'Middle East respiratory syndrome'],
-  [/crimean[- ]congo/i,                                     'Crimean-Congo haemorrhagic fever'],
-  [/sudan virus|sudan ebolavirus/i,                         'Sudan virus disease'],
-  [/bundibugyo/i,                                           'Ebola (Bundibugyo virus)'],
-  [/marburg/i,                                              'Marburg virus disease'],
-  [/\bebola\b/i,                                            'Ebola'],
-  [/\blassa\b/i,                                            'Lassa fever'],
-  [/rift valley/i,                                          'Rift Valley fever'],
-  [/\bnipah\b/i,                                            'Nipah virus infection'],
-  [/oropouche/i,                                            'Oropouche fever'],
-  [/japanese encephalitis/i,                                'Japanese encephalitis'],
-  [/tick[- ]borne encephalitis/i,                           'Tick-borne encephalitis'],
-  [/west nile/i,                                            'West Nile fever'],
-  [/yellow fever/i,                                         'Yellow fever'],
-  [/\bdengue\b/i,                                           'Dengue'],
-  [/chikungunya/i,                                          'Chikungunya'],
-  [/\bzika\b/i,                                             'Zika virus disease'],
-  [/\bmalaria\b/i,                                          'Malaria'],
-  [/\bcholera\b/i,                                          'Cholera'],
-  [/\bmeasles\b|rubeola/i,                                  'Measles'],
-  [/\brubella\b/i,                                          'Rubella'],
-  [/\bmumps\b/i,                                            'Mumps'],
-  [/diphtheria/i,                                           'Diphtheria'],
-  [/pertussis|whooping cough/i,                             'Pertussis'],
-  [/poliomyel|\bpolio\b|poliovirus/i,                       'Polio'],
-  [/mpox|monkeypox/i,                                       'Mpox'],
-  [/meningococcal|meningitis/i,                             'Meningococcal disease'],
-  [/hepatitis a\b/i,                                        'Hepatitis A'],
-  [/hepatitis e\b/i,                                        'Hepatitis E'],
-  [/typhoid|enteric fever/i,                                'Typhoid fever'],
-  [/leptospirosis/i,                                        'Leptospirosis'],
-  [/melioidosis/i,                                          'Melioidosis'],
-  [/scrub typhus/i,                                         'Scrub typhus'],
-  [/legionell/i,                                            'Legionellosis'],
-  [/\bplague\b/i,                                           'Plague'],
-  [/anthrax/i,                                              'Anthrax'],
-  [/\brabies\b/i,                                           'Rabies'],
-  [/guinea[- ]worm|dracunculiasis/i,                        'Guinea-worm disease'],
-  [/hand,? foot,? and mouth/i,                              'Hand, foot and mouth disease'],
-  [/\bcovid|sars-cov-2/i,                                   'COVID-19'],
-  [/respiratory syncytial|\brsv\b/i,                        'Respiratory syncytial virus'],
-  [/\binfluenza\b|\bflu\b/i,                                'Influenza'],
-  [/tuberculosis|\btb\b/i,                                  'Tuberculosis'],
-  [/\bhantavirus\b/i,                                       'Hantavirus'],
-  [/leishmania/i,                                           'Leishmaniasis']
+/* Boilerplate CDC uses in level 3 and 4 titles, where the disease is not in the
+   title at all and has to come out of the description. */
+const CDC_BOILERPLATE = /^(avoid all travel|avoid nonessential travel|reconsider nonessential travel|practice enhanced precautions|practice usual precautions|global measles|updated)\b/i;
+
+function parseNoticeTitle(title){
+  const m = String(title).match(/^\s*Level\s*([1-4])\s*[-\u2013\u2014:]\s*(.+)$/i);
+  const level = m ? +m[1] : 1;
+  let rest = (m ? m[2] : String(title)).trim();
+
+  let global = false;
+  if(/^(global|worldwide|multi-?country)\b/i.test(rest)){
+    global = true;
+    rest = rest.replace(/^(global|worldwide|multi-?country)\s*/i, '').trim();
+  }
+
+  // "<Disease> in <Place>" is the common shape; level 3 and 4 use "... to <Place>"
+  let disease = rest, where = '';
+  const inMatch = rest.match(/^(.*?)\s+(?:in|to)\s+(.+)$/i);
+  if(inMatch){ disease = inMatch[1].trim(); where = inMatch[2].trim(); }
+  if(/\b(global|worldwide|multiple countries)\b/i.test(where)) global = true;
+
+  return { level, disease, where, global, boilerplate: CDC_BOILERPLATE.test(disease) };
+}
+
+/* Global notices name their countries on the notice page, under a "Country
+   List" heading. Reading that page is one extra request per global notice, and
+   there are rarely more than a handful. */
+async function cdcNoticeCountries(url){
+  const r = await fetch(url, { headers:{ 'user-agent':UA } });
+  if(!r.ok) throw new Error('HTTP ' + r.status);
+  const html = await r.text();
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ');
+
+  // prefer the explicit list if the page has one
+  const list = text.match(/Country List\s*:?\s*([^.]{3,600})/i);
+  return scanForCountries(list ? list[1] : text.slice(0, 4000));
+}
+
+async function fetchCDCNotices(){
+  const r = await fetch(CDC_NOTICES_RSS, {
+    headers:{ 'accept':'application/rss+xml, application/xml, text/xml', 'user-agent':UA }
+  });
+  if(!r.ok) throw new Error('CDC returned ' + r.status);
+
+  const items = parseRSS(await r.text());
+  if(!items.length) throw new Error('no <item> elements in the feed');
+
+  const countries = {};
+  const unmatched = [];
+  let globalsRead = 0, records = 0;
+  const GLOBAL_PAGE_LIMIT = 5;    // extra page fetches per run
+  const COUNTRY_CAP = 30;         // one notice must not paint the whole globe
+
+  for(const item of items){
+    const parsed = parseNoticeTitle(item.title);
+
+    // work out the disease: the title normally holds it, level 3/4 titles don't
+    let disease = parsed.disease;
+    if(parsed.boilerplate || !disease){
+      disease = diseaseFromText(item.title, item.description) || null;
+    } else {
+      const known = diseaseFromText(disease);
+      if(known) disease = known;                   // normalises Monkeypox -> Mpox
+    }
+    if(!disease){ unmatched.push(item.title.slice(0, 70)); continue; }
+
+    // work out the countries
+    let isos = parsed.where ? scanForCountries(parsed.where) : [];
+    if(!isos.length && !parsed.global) isos = scanForCountries(item.title);
+    if(!isos.length && parsed.global && item.link && globalsRead < GLOBAL_PAGE_LIMIT){
+      globalsRead++;
+      try{ isos = await cdcNoticeCountries(item.link); }
+      catch(err){ /* the notice still counts, we just can't place it */ }
+    }
+    if(!isos.length){ unmatched.push(item.title.slice(0, 70)); continue; }
+    if(isos.length > COUNTRY_CAP) isos = isos.slice(0, COUNTRY_CAP);
+
+    // level 1 is "usual precautions", level 4 is "avoid all travel"
+    const bump = [0, 0, 8, 18, 28][parsed.level] || 0;
+    const severity = Math.min(100, severityFor(disease, null, null) + bump);
+    const asOf = rssDate(item.date);
+
+    for(const iso of isos){
+      const entry = {
+        name: disease,
+        cases: null,            // a travel notice is an advisory, not a count
+        deaths: null,
+        cfr: null,
+        per100k: null,
+        growth7d: null,
+        severity,
+        asOf,
+        source: `US CDC travel health notice (Level ${parsed.level})`,
+        url: item.link || 'https://wwwnc.cdc.gov/travel/notices',
+        provisional: true
+      };
+      if(addIfNew(countries, iso, entry, 'medium')) records++;
+    }
+  }
+
+  return { countries, matched:Object.keys(countries).length, notices:items.length,
+           records, globalsRead, unmatched:[...new Set(unmatched)].slice(0, 8) };
+}
+
+/* ---------------------------------------------------------------------------
+   4i. SOURCE: RELIEFWEB (UN OCHA)
+
+   ReliefWeb curates situation reports from thousands of humanitarian sources
+   and tags every one with a disaster type and a country. Its API is public,
+   returns JSON, and needs no key — only an `appname` so they can see who is
+   calling.
+
+   This is the feed that reaches the countries nobody else reports on: Yemen,
+   Afghanistan, Sudan, Syria, Myanmar, Haiti, the places where the health
+   ministry has other problems and the reporting comes from an NGO instead.
+
+   Treat it accordingly. Records land with conf:'low' and provisional:true,
+   because the underlying reports vary from a WHO sitrep to an NGO field
+   update, and the globe's confidence badge should say so.
+   --------------------------------------------------------------------------- */
+
+const RELIEFWEB_API = 'https://api.reliefweb.int/v1/reports';
+const RELIEFWEB_APP = 'pandemic-tracker-student-project';
+const RELIEFWEB_DAYS = 45;      // how far back to look
+
+/* ReliefWeb speaks ISO 3166 alpha-3. Natural Earth's 110m basemap resolves a
+   few territories under its own codes, and the globe matches on those, so
+   translate before writing anything into the payload. */
+const ISO3_FIX = { XKX:'KOS', PSE:'PSX', ESH:'SAH', ROM:'ROU', TMP:'TLS', ZAR:'COD' };
+function fixISO(code){
+  const up = String(code || '').toUpperCase();
+  return ISO3_FIX[up] || up;
+}
+
+async function fetchReliefWeb(){
+  const since = new Date(Date.now() - RELIEFWEB_DAYS * 86400000).toISOString().slice(0, 10);
+  const include = ['title','date.created','country.iso3','country.name','url','source.shortname','disaster_type.name'];
+  const common = [
+    `appname=${encodeURIComponent(RELIEFWEB_APP)}`,
+    'limit=120',
+    'sort[]=date.created:desc',
+    ...include.map((f, i) => `fields[include][${i}]=${encodeURIComponent(f)}`)
+  ];
+
+  // Attempt 1: the proper taxonomy filter. Attempt 2: a title search, in case
+  // the taxonomy field is renamed — same failure handling as FluNet.
+  const attempts = [
+    `${RELIEFWEB_API}?${common.join('&')}`
+      + '&filter[operator]=AND'
+      + '&filter[conditions][0][field]=disaster_type.name'
+      + '&filter[conditions][0][value]=Epidemic'
+      + `&filter[conditions][1][field]=date.created`
+      + `&filter[conditions][1][value][from]=${since}`,
+    `${RELIEFWEB_API}?${common.join('&')}`
+      + '&query[value]=' + encodeURIComponent(DISEASE_WORDS.join(' OR '))
+      + '&query[fields][0]=title'
+      + '&filter[field]=date.created'
+      + `&filter[value][from]=${since}`
+  ];
+
+  let data = null, usedAttempt = 0, lastErr = null;
+  for(let i = 0; i < attempts.length; i++){
+    try{
+      const r = await fetch(attempts[i], { headers:{ accept:'application/json', 'user-agent':UA } });
+      if(!r.ok){ lastErr = 'HTTP ' + r.status; continue; }
+      const j = await r.json();
+      if(Array.isArray(j?.data) && j.data.length){ data = j.data; usedAttempt = i + 1; break; }
+      lastErr = 'no reports returned';
+    }catch(err){ lastErr = err.message; }
+  }
+  if(!data) throw new Error('both queries failed (' + lastErr + ')');
+
+  const countries = {};
+  const skipped = [];
+  let records = 0;
+  const COUNTRY_CAP = 12;        // a regional roundup is not 40 outbreaks
+
+  for(const item of data){
+    const f = item.fields || {};
+    const title = String(f.title || '');
+    const disease = diseaseFromText(title);
+    if(!disease){ skipped.push(title.slice(0, 70)); continue; }
+
+    const list = (Array.isArray(f.country) ? f.country : [])
+      .filter(c => c && c.iso3 && !/^world$/i.test(c.name || ''))
+      .slice(0, COUNTRY_CAP);
+    if(!list.length){ skipped.push(title.slice(0, 70)); continue; }
+
+    const asOf = String(f.date?.created || '').slice(0, 10) || null;
+    const org = f.source?.[0]?.shortname || 'ReliefWeb';
+
+    for(const c of list){
+      const entry = {
+        name: disease,
+        cases: findCases(title),      // occasionally the headline carries them
+        deaths: findDeaths(title),
+        cfr: null,
+        per100k: null,
+        growth7d: null,
+        severity: severityFor(disease, findCases(title), findDeaths(title)),
+        asOf,
+        source: `ReliefWeb — ${org}`,
+        url: f.url || 'https://reliefweb.int/disasters',
+        provisional: true
+      };
+      if(addIfNew(countries, fixISO(c.iso3), entry, 'low')) records++;
+    }
+  }
+
+  return { countries, matched:Object.keys(countries).length, reports:data.length,
+           records, usedAttempt, skipped:[...new Set(skipped)].slice(0, 6) };
+}
+
+/* ---------------------------------------------------------------------------
+   4j. SOURCE: WHO EMRO — THE EASTERN MEDITERRANEAN
+
+   EMRO maintains a "Current outbreaks in the WHO Eastern Mediterranean Region"
+   table: one row per country per disease, with cumulative cases, deaths, CFR
+   and the month the event started. It is the only regional table that covers
+   Afghanistan, Iraq, Somalia, Sudan, Syria, Yemen and Pakistan in one place.
+
+   READ THIS BEFORE YOU TRUST IT.
+
+   EMRO publishes that table irregularly. At the time this adapter was written
+   the page at /pandemic-epidemic-diseases/outbreaks/ was stamped "Table last
+   updated on 27 January 2024", and the newer table under
+   /surveillance-forecasting-response/outbreaks carried figures through
+   28 December 2024. Both are old enough that presenting them as current
+   outbreak data would be dishonest — a 2024 cholera figure painted on a 2026
+   map is worse than an honest hatch.
+
+   So this adapter does three things the others do not:
+
+     1. it reads BOTH table URLs and keeps whichever is stamped more recently;
+     2. it parses the stamp, and if the table is older than EMRO_MAX_AGE_DAYS
+        it publishes NOTHING and says so in _notes;
+     3. it marks countries carrying EMRO's asterisk — "no update received from
+        this country during the reporting period" — as low confidence.
+
+   The gate is the point. Leave the adapter in: the day EMRO refreshes the
+   table, the Middle East fills in by itself with no code change. Until then
+   ReliefWeb and the CDC travel notices are what reach those countries.
+   --------------------------------------------------------------------------- */
+
+const EMRO_TABLES = [
+  'https://www.emro.who.int/surveillance-forecasting-response/outbreaks',
+  'https://www.emro.who.int/pandemic-epidemic-diseases/outbreaks/index.html'
+];
+const EMRO_MAX_AGE_DAYS = 120;    // older than this and nothing is published
+const EMRO_SHOW_STALE   = false;  // set true to publish it anyway, dates and all
+
+/* --- tiny HTML table reader ---------------------------------------------- */
+
+function cellText(cell){
+  return String(cell)
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+    .replace(/&#8217;|&rsquo;/g, "'").replace(/&ndash;/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function htmlTableRows(html){
+  const tables = html.match(/<table[\s\S]*?<\/table>/gi) || [];
+  return tables.map(tbl =>
+    (tbl.match(/<tr[\s\S]*?<\/tr>/gi) || [])
+      .map(tr => (tr.match(/<t[dh][\s\S]*?<\/t[dh]>/gi) || []).map(cellText))
+  );
+}
+
+/* A value slot is a number, a percentage, or one of EMRO's dashes for "not
+   reported". Keeping the empty ones as null is what makes the column layout
+   readable: "5033 | - | 45447 | - | -" has to stay five slots wide or the
+   numbers shift into the wrong columns. */
+function isSlot(s){
+  return s === '' || s === '-' || s === '--' || s === '–'
+      || /^[0-9][0-9\s,.\u00a0]*%?$/.test(s);
+}
+function slotValue(s){
+  if(!s || /^[-–]+$/.test(s)) return null;
+  const n = parseFloat(String(s).replace(/[%\s,\u00a0]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+/* "Jan-24", "January-23", "Aug-23" — the month the event began, not the month
+   the figures are from. Used for context only. */
+const EVENT_DATE = /^[A-Za-z]{3,9}\s*[-\u2013]\s*\d{2,4}$/;
+
+const MONTHS = ['january','february','march','april','may','june','july',
+                'august','september','october','november','december'];
+
+/* Find how old the table is. Two stamp formats have been seen:
+     "Table last updated on 27 January 2024"
+     column header "Cumulative 1 Jan-28 Dec. 2024"  */
+function emroStamp(text){
+  const explicit = text.match(/Table last updated on\s*([0-9]{1,2})\s+([A-Za-z]+)\s+([0-9]{4})/i);
+  if(explicit){
+    const mi = MONTHS.findIndex(m => m.startsWith(explicit[2].toLowerCase().slice(0, 3)));
+    if(mi >= 0) return { date: new Date(Date.UTC(+explicit[3], mi, +explicit[1])), via: 'page stamp' };
+  }
+  /* Otherwise take the END of the reporting period out of a column header.
+     Both shapes have been seen, and both end with "<day> <month> <year>":
+         "Cumulative 1 Jan-28 Dec. 2024"   ->  28 Dec 2024
+         "1-28 December 2024"              ->  28 December 2024
+     Scanning for the LAST day-month-year in the page is what makes one
+     pattern cover both. */
+  const period = [...text.matchAll(/([0-9]{1,2})\s*[-\u2013]?\s*([A-Za-z]{3,9})\.?\s*,?\s*([0-9]{4})/g)];
+  const last = period[period.length - 1];
+  if(last){
+    const mi = MONTHS.findIndex(m => m.startsWith(last[2].toLowerCase().slice(0, 3)));
+    if(mi >= 0) return { date: new Date(Date.UTC(+last[3], mi, +last[1])), via: 'column header' };
+  }
+  return { date: null, via: 'none found' };
+}
+
+/* EMRO's disease names, normalised to what the rest of the pipeline and the
+   guidance library expect. Anything not listed passes through as written. */
+const EMRO_DISEASE = [
+  [/acute watery diarrho?ea|(^|\W)awd(\W|$)/i, 'Cholera (acute watery diarrhoea)'],
+  [/cholera/i,                                  'Cholera'],
+  [/crimean/i,                                  'Crimean-Congo haemorrhagic fever'],
+  [/circulating vaccine[- ]derived/i,           'Circulating vaccine-derived poliovirus (cVDPV2)'],
+  [/wild polio/i,                               'Polio (wild poliovirus type 1)'],
+  [/poliomyelitis|polio/i,                      'Polio'],
+  [/middle east respiratory|mers/i,             'MERS-CoV'],
+  [/mpox|monkeypox/i,                           'Mpox'],
+  [/dengue/i,                                   'Dengue'],
+  [/chikungunya/i,                              'Chikungunya'],
+  [/rift valley/i,                              'Rift Valley fever'],
+  [/legionnaire/i,                              "Legionnaires' disease"],
+  [/diphtheria/i,                               'Diphtheria'],
+  [/measles/i,                                  'Measles'],
+  [/malaria/i,                                  'Malaria'],
+  [/hepatitis a/i,                              'Hepatitis A'],
+  [/hepatitis e/i,                              'Hepatitis E'],
+  [/brucellosis/i,                              'Brucellosis'],
+  [/botulism/i,                                 'Botulism'],
+  [/meningitis|meningococcal/i,                 'Meningococcal meningitis'],
+  [/leishmania/i,                               'Leishmaniasis'],
+  [/typhoid/i,                                  'Typhoid fever']
 ];
 
-function diseaseFromTitle(...texts){
-  for(const text of texts){
-    if(!text) continue;
-    for(const [re, name] of GLOBAL_DISEASE_WORDS){
-      if(re.test(text)) return name;
-    }
+/* Chronic-infection rows sit in the same table but are not outbreak signals,
+   and putting an HIV programme total on an outbreak globe would misread it. */
+const EMRO_SKIP = /human immunodeficiency|(^|\W)hiv(\W|$)|tuberculosis/i;
+
+function emroDisease(raw){
+  for(const [re, name] of EMRO_DISEASE) if(re.test(raw)) return name;
+  return raw.replace(/\s*\([^)]*\)\s*$/, '').trim();   // drop a trailing "(XYZ)"
+}
+
+async function fetchEMRO(){
+  let best = null;
+
+  for(const url of EMRO_TABLES){
+    try{
+      const r = await fetch(url, { headers:{ accept:'text/html', 'user-agent':UA } });
+      if(!r.ok) continue;
+      const html = await r.text();
+      const plain = cellText(html.replace(/<script[\s\S]*?<\/script>/gi, ' '));
+      const stamp = emroStamp(plain);
+
+      // the outbreak table is the one with a Countries column and a Diseases column
+      const tables = htmlTableRows(html);
+      const table = tables.find(rows => rows.some(cells => {
+        const joined = cells.join(' ').toLowerCase();
+        return /countr/.test(joined) && /disease/.test(joined);
+      }));
+      if(!table) continue;
+
+      if(!best || (stamp.date && (!best.stamp.date || stamp.date > best.stamp.date))){
+        best = { url, table, stamp };
+      }
+    }catch(err){ /* try the next URL */ }
+  }
+
+  if(!best) throw new Error('neither outbreak table could be read');
+
+  const asOf = best.stamp.date ? best.stamp.date.toISOString().slice(0, 10) : null;
+  const ageDays = best.stamp.date
+    ? Math.round((Date.now() - best.stamp.date.getTime()) / 86400000)
+    : null;
+
+  const countries = {};
+  const unmatched = [];
+  let rows = 0, noUpdate = 0;
+
+  for(const cells of best.table){
+    if(cells.length < 4) continue;
+
+    let country = cells[0];
+    const diseaseRaw = cells[1];
+    if(!country || !diseaseRaw) continue;
+    if(/countr|disease|cumulative|new cases/i.test(country + ' ' + diseaseRaw)) continue;  // header row
+
+    // EMRO marks countries that did not report this period with an asterisk
+    const stale = /\*+\s*$/.test(country);
+    country = country.replace(/\*+\s*$/, '').trim();
+    if(stale) noUpdate++;
+
+    const iso = toISO(country) || (scanForCountries(country)[0] || null);
+    if(!iso){ unmatched.push(country); continue; }
+
+    if(EMRO_SKIP.test(diseaseRaw)) continue;
+    const disease = emroDisease(diseaseRaw);
+
+    // read the numeric columns positionally, keeping the dashes as empty slots
+    let rest = cells.slice(2);
+    if(rest.length && EVENT_DATE.test(rest[rest.length - 1])) rest = rest.slice(0, -1);
+    const slots = rest.filter(isSlot).map(slotValue);
+
+    let cases = null, deaths = null;
+    if(slots.length >= 5){ cases = slots[2]; deaths = slots[3]; }        // new/new/cum/cum/cfr
+    else if(slots.length === 4){ cases = slots[0]; deaths = slots[1]; }
+    else if(slots.length === 3){ cases = slots[0]; deaths = slots[1]; }  // cum/cum/cfr
+    else if(slots.length === 2){ cases = slots[0]; deaths = slots[1]; }
+    else if(slots.length === 1){ cases = slots[0]; }
+    if(cases == null && deaths == null) continue;
+
+    const entry = {
+      name: disease,
+      cases,
+      deaths,
+      cfr: (cases && deaths && cases > 20) ? +(deaths / cases * 100).toFixed(1) : null,
+      per100k: null,
+      growth7d: null,
+      severity: severityFor(disease, cases, deaths),
+      asOf,                                  // the table's stamp, not today
+      source: stale
+        ? 'WHO EMRO regional outbreak table (country did not report this period)'
+        : 'WHO EMRO regional outbreak table',
+      url: best.url,
+      provisional: true
+    };
+    if(addIfNew(countries, iso, entry, stale ? 'low' : 'medium')) rows++;
+  }
+
+  const fresh = ageDays != null && ageDays <= EMRO_MAX_AGE_DAYS;
+  return {
+    countries: (fresh || EMRO_SHOW_STALE) ? countries : {},
+    parsed: rows,
+    matched: Object.keys(countries).length,
+    noUpdate,
+    asOf, ageDays, fresh,
+    published: fresh || EMRO_SHOW_STALE,
+    via: best.stamp.via,
+    url: best.url,
+    unmatched: [...new Set(unmatched)].slice(0, 8)
+  };
+}
+
+/* ---------------------------------------------------------------------------
+   4k. SOURCE: EMRO COUNTRY OFFICE WEEKLY SITUATION REPORTS (PDF)
+
+   The regional table in §4j has gone quiet, but the country offices are still
+   publishing. Afghanistan's WHO office puts out an "Infectious disease
+   outbreaks situation report" every epidemiological week, as a PDF, with
+   measles, AWD, dengue, CCHF, malaria and respiratory numbers in it. That is a
+   live weekly feed for a country nothing else in this pipeline reaches.
+
+   HOW THIS READS A PDF, AND WHAT IT REFUSES TO READ
+   ------------------------------------------------
+   The report opens with an infographic: disease names in coloured boxes with
+   the cumulative counts underneath. Do not trust it. PDF text extraction walks
+   the drawing order, not the visual order, and in these files the labels and
+   the numbers come out offset from each other. In the week 26-2024 report the
+   extracted text reads
+
+       AWD 70,350   ARI *8,313   COVID-19 35,021   Measles 787,721
+
+   but the figure captions in the same document say measles was 35,021 and the
+   asterisk note says 8,313 is the COVID-19 count. Pair label-to-number there
+   and you publish 787,721 measles cases in Afghanistan, which would swamp the
+   globe with a number nobody reported.
+
+   So this parser ignores the infographic entirely and reads only self-contained
+   sentences, where the disease and its number sit in the same clause:
+
+     · figure captions  "…suspected measles cases in Afghanistan, 29 Dec 2024
+                         – 16 Aug 2025 (N= 84,922)"        -> cumulative
+     · weekly bullets   "During week 45-2025, a total of 2,780 AWD with
+                         dehydration cases, with one associated death…"  -> weekly
+     · year-to-date     "Since the beginning of 2025, 19,272 cases of suspected
+                         measles and 129 associated deaths…"  -> cumulative
+
+   Anything it cannot attribute to a disease with confidence is dropped rather
+   than guessed at.
+
+   ADDING MORE COUNTRIES
+   ---------------------
+   Add an entry to EMRO_COUNTRY_REPORTS. Only Afghanistan is enabled because
+   Afghanistan's format is the one that has been checked line by line against
+   real reports. Other EMR country offices publish weekly bulletins in their own
+   layouts (Iraq and Yemen use EWARN formats); verify the sentence patterns
+   survive before you switch one on, and check the parsed numbers against the
+   PDF by hand the first time.
+
+   Needs the `unpdf` package: npm i unpdf. The import is dynamic, so if the
+   dependency is missing the adapter reports that in _notes and the rest of the
+   API carries on.
+   --------------------------------------------------------------------------- */
+
+const EMRO_COUNTRY_REPORTS = [
+  {
+    iso: 'AFG',
+    label: 'Afghanistan',
+    enabled: true,
+    index: 'https://www.emro.who.int/afg/information-resources/infectious-disease-outbreak-situation-reports.html',
+    // the PDFs live in the country's media folder, under half a dozen naming
+    // conventions across the years, so match the folder and rank by week
+    pdfMatch: /\/images\/stories\/afghanistan\/[^"']+\.pdf/i
+  }
+  // { iso:'IRQ', label:'Iraq', enabled:false, index:'…', pdfMatch:/…/ },
+  // { iso:'YEM', label:'Yemen', enabled:false, index:'…', pdfMatch:/…/ },
+];
+
+const EMRO_REPORT_MAX_AGE_DAYS = 60;   // a "weekly" report two months old is not weekly
+const EMRO_PDF_MAX_BYTES = 12 * 1024 * 1024;
+
+/* unpdf is only loaded when a PDF actually needs reading. */
+let _pdfLib = null;
+async function pdfLib(){
+  if(_pdfLib) return _pdfLib;
+  try{
+    _pdfLib = await import('unpdf');
+  }catch(err){
+    throw new Error('the unpdf package is not installed — run `npm i unpdf` and redeploy');
+  }
+  return _pdfLib;
+}
+
+/* Cache extracted text per URL. A warm lambda re-reading the same weekly report
+   costs nothing, and the report only changes once a week. */
+const pdfTextCache = new Map();
+
+async function pdfText(url){
+  if(pdfTextCache.has(url)) return pdfTextCache.get(url);
+
+  const r = await fetch(url, { headers:{ 'user-agent':UA } });
+  if(!r.ok) throw new Error('PDF HTTP ' + r.status);
+
+  const len = +(r.headers.get('content-length') || 0);
+  if(len && len > EMRO_PDF_MAX_BYTES) throw new Error('PDF is ' + Math.round(len/1e6) + ' MB, too large to parse here');
+
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  if(bytes.length > EMRO_PDF_MAX_BYTES) throw new Error('PDF is too large to parse here');
+
+  const { extractText, getDocumentProxy } = await pdfLib();
+  const doc = await getDocumentProxy(bytes);
+  const { text } = await extractText(doc, { mergePages: true });
+
+  const clean = String(text)
+    .replace(/-\s*\n\s*/g, '')        // rejoin words hyphenated across a line break
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if(pdfTextCache.size > 12) pdfTextCache.clear();
+  pdfTextCache.set(url, clean);
+  return clean;
+}
+
+/* --- reading the numbers ------------------------------------------------- */
+
+const WORD_NUM = { one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10 };
+
+function countOf(raw){
+  if(raw == null) return null;
+  const word = WORD_NUM[String(raw).toLowerCase()];
+  if(word) return word;
+  const n = parseInt(String(raw).replace(/[\s,\u00a0]/g, ''), 10);
+  // a national weekly bulletin does not report tens of millions of cases; a
+  // number that big is a parse error, not an outbreak
+  return Number.isFinite(n) && n >= 0 && n < 10_000_000 ? n : null;
+}
+
+const SITREP_DISEASE = [
+  [/acute watery diarrho?ea|\bAWD\b/i,            'Cholera (acute watery diarrhoea)'],
+  [/\bcholera\b/i,                                'Cholera'],
+  [/\bmeasles\b/i,                                'Measles'],
+  [/\bdengue\b/i,                                 'Dengue'],
+  [/\bCCHF\b|crimean/i,                           'Crimean-Congo haemorrhagic fever'],
+  [/\bmalaria\b/i,                                'Malaria'],
+  [/pertussis|whooping cough/i,                   'Pertussis'],
+  [/\bdiphtheria\b/i,                             'Diphtheria'],
+  [/\bchikungunya\b/i,                            'Chikungunya'],
+  [/\bpolio|\bAFP\b|poliovirus/i,                 'Polio'],
+  [/\bCOVID[- ]?19\b/i,                           'COVID-19'],
+  [/\binfluenza\b|\bILI\b|\bSARI\b/i,             'Influenza'],
+  [/acute respiratory infection|\bARI\b/i,        'Acute respiratory illness'],
+  [/\bhepatitis\b/i,                              'Viral hepatitis'],
+  [/leishmania/i,                                 'Leishmaniasis']
+];
+
+function sitrepDisease(text){
+  if(!text) return null;
+  for(const [re, name] of SITREP_DISEASE) if(re.test(text)) return name;
+  return null;
+}
+
+/* When a weekly bullet says "a total of 1,344 suspected cases" without naming
+   the disease, the disease is whatever the section was about. Look back a short
+   way for the last disease word — and give up rather than guess if there isn't
+   one. */
+function diseaseNearby(text, index, back = 700){
+  const before = text.slice(Math.max(0, index - back), index);
+  for(const re of [/[^.]*$/]){ void re; }
+  let found = null;
+  for(const [re, name] of SITREP_DISEASE){
+    const m = before.match(new RegExp(re.source + '(?![\\s\\S]*' + re.source + ')', re.flags.replace('g','')));
+    if(m && m.index != null && (found == null || m.index > found.at)) found = { at:m.index, name };
+  }
+  return found ? found.name : null;
+}
+
+/* ISO week -> the Sunday that ends it, for reports that only give a week number */
+function isoWeekEnd(year, week){
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const dow = (jan4.getUTCDay() + 6) % 7;                 // Monday = 0
+  const week1Monday = new Date(jan4.getTime() - dow * 86400000);
+  return new Date(week1Monday.getTime() + ((week - 1) * 7 + 6) * 86400000);
+}
+
+const MONTH_RE = '(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*';
+
+/* "No. 45 (03 - 09 Nov 2025)" and "07 - 13 December 2025" both give an end date */
+function sitrepEndDate(text){
+  const m = text.match(new RegExp('(\\d{1,2})\\s*[-\\u2013]\\s*(\\d{1,2})\\s*' + MONTH_RE + '\\.?\\s*(20\\d{2})', 'i'));
+  if(m){
+    const mi = MONTHS.findIndex(x => x.startsWith(m[3].toLowerCase().slice(0, 3)));
+    if(mi >= 0) return new Date(Date.UTC(+m[4], mi, +m[2]));
   }
   return null;
 }
 
-/* --- the smallest XML reader that will do the job -------------------------
-   RSS and Atom both wrap each notice in a repeating element, so pulling the
-   blocks out and then reading named tags inside them is enough. No parser
-   dependency, and nothing here can be tripped by a malformed feed — a tag it
-   cannot read comes back as an empty string. */
+/**
+ * Pull disease records out of one situation report's text.
+ * Every record carries how it was read, so a wrong number can be traced back
+ * to the sentence that produced it.
+ */
+function parseSitrep(text){
+  const found = new Map();   // disease -> record
 
-function feedItems(xml){
-  const out = [];
-  const re = /<(item|entry)\b[\s\S]*?<\/\1>/gi;
-  let m;
-  while((m = re.exec(xml)) !== null) out.push(m[0]);
-  return out;
-}
+  const put = (disease, patch, how) => {
+    if(!disease) return;
+    const cur = found.get(disease) || { name:disease, cases:null, deaths:null, weekCases:null, weekDeaths:null, how:[] };
+    for(const [k, v] of Object.entries(patch)) if(v != null) cur[k] = Math.max(cur[k] ?? 0, v);
+    if(!cur.how.includes(how)) cur.how.push(how);
+    found.set(disease, cur);
+  };
 
-function unwrap(s){
-  return String(s)
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'")
-    .replace(/&amp;/g, '&');
-}
-
-function tagText(block, name){
-  const m = new RegExp('<' + name + '\\b[^>]*>([\\s\\S]*?)<\\/' + name + '>', 'i').exec(block);
-  return m ? stripTags(unwrap(m[1])).trim() : '';
-}
-
-function itemLink(block){
-  const plain = tagText(block, 'link');
-  if(plain) return plain;
-  const href = /<link\b[^>]*href=["']([^"']+)["']/i.exec(block);   // Atom style
-  return href ? unwrap(href[1]) : '';
-}
-
-function cdcLevel(title, body, link){
-  const numbered = /level\s*[-:]?\s*([1-4])\b/i.exec(title + ' ' + body);
-  if(numbered) return +numbered[1];
-
-  const fromPath = /\/notices\/(?:level)?([1-4])\b/i.exec(link);
-  if(fromPath) return +fromPath[1];
-
-  const word = /\b(watch|alert|warning)\b/i.exec(link + ' ' + title);
-  if(word) return CDC_WORD_LEVEL[word[1].toLowerCase()];
-
-  return 1;                       // unlabelled notices are treated as the mildest
-}
-
-async function fetchCDCTravel(){
-  const r = await fetch(CDC_TRAVEL_RSS, {
-    headers: { ...UA_HEADERS, accept: 'application/rss+xml, application/xml, text/xml' }
-  });
-  if(!r.ok) throw new Error('CDC travel notices returned ' + r.status);
-
-  const xml = await r.text();
-  const items = feedItems(xml);
-  if(!items.length) throw new Error('feed parsed but held no <item> elements');
-
-  const countries = {};
-  const unresolved = [];
-  const levels = {};
-  let matched = 0, global = 0;
-
-  for(const block of items){
-    const title = tagText(block, 'title');
-    const body  = tagText(block, 'description') || tagText(block, 'summary');
-    const link  = itemLink(block) || 'https://wwwnc.cdc.gov/travel/notices';
-    const date  = (tagText(block, 'pubDate') || tagText(block, 'updated') || '').trim();
-
-    const disease = diseaseFromTitle(title, body);
-    if(!disease){ unresolved.push(title.slice(0, 60)); continue; }
-
-    const level = cdcLevel(title, body, link);
-    levels[level] = (levels[level] || 0) + 1;
-
-    /* A notice about one country names it in the title; a global notice names
-       a list of them in the body. Reading both covers each case, and the
-       scanner consumes long names before short ones so "Papua New Guinea"
-       cannot be read as "Guinea". */
-    const hits = scanForCountries(title + ' ' + body);
-    if(!hits.length){ global++; continue; }
-
-    const asOf = date ? new Date(date).toISOString().slice(0, 10) : null;
-    const sev  = Math.min(100, severityFor(disease, null, null) + (CDC_LEVEL_BUMP[level] || 0));
-
-    for(const iso of hits){
-      mergeCountry(countries, iso, {
-        name: disease,
-        cases: null, deaths: null, cfr: null, per100k: null, growth7d: null,
-        severity: sev,
-        asOf: Number.isNaN(Date.parse(date)) ? null : asOf,
-        source: `CDC Travel Health Notice — Level ${level}`,
-        url: link,
-        provisional: true
-      }, 'medium');
-      matched++;
-    }
+  /* 1. figure captions: cumulative total for a named disease */
+  const caption = /Figure[^.]{0,8}\.\s*([^()]{0,160}?)\bcases\b[^()]{0,90}?\(\s*N\s*=\s*([\d,\s]+)\)/gi;
+  for(const m of text.matchAll(caption)){
+    put(sitrepDisease(m[1]), { cases: countOf(m[2]) }, 'figure caption');
   }
 
-  return {
-    countries,
-    matched: Object.keys(countries).length,
-    records: matched,
-    notices: items.length,
-    global,
-    levels,
-    unresolved: [...new Set(unresolved)].slice(0, 8)
-  };
+  /* 2. year-to-date sentences */
+  const ytd = /Since the beginning of\s+(20\d{2})[,\s]+([\d,]+)\s+cases of\s+([^,.;]{0,60}?)\s+and\s+([\d,]+)[^.]{0,40}?deaths/gi;
+  for(const m of text.matchAll(ytd)){
+    put(sitrepDisease(m[3]), { cases: countOf(m[2]), deaths: countOf(m[4]) }, 'year-to-date sentence');
+  }
+
+  /* 3. weekly bullets. The disease is sometimes in the clause and sometimes
+        only in the section above it. */
+  const weekly = /During\s+(?:epidemiological\s+)?week\s*#?\s*(\d{1,2})\s*[-\u2013]?\s*(20\d{2})?[,\s]+(?:a\s+total\s+of\s+)?([\d,]+)\s+([^,.;]{0,70}?)\bcases?\b/gi;
+  for(const m of text.matchAll(weekly)){
+    const disease = sitrepDisease(m[4]) || diseaseNearby(text, m.index);
+    const tail = text.slice(m.index, m.index + 320);
+    const dm = tail.match(/(\b[\d,]+\b|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:new\s+|associated\s+|suspected\s+|reported\s+|related\s+)*deaths?/i);
+    put(disease, { weekCases: countOf(m[3]), weekDeaths: dm ? countOf(dm[1]) : null }, 'weekly bullet');
+  }
+
+  return [...found.values()];
 }
 
-/* ---------------------------------------------------------------------------
-   4i. SOURCE: RELIEFWEB  (fills Asia, Central Asia and the Pacific)
+/* --- the adapter --------------------------------------------------------- */
 
-   CDC's notices are graded but sparse — a country with a real outbreak and no
-   travel implication may carry no notice at all. ReliefWeb is the opposite: it
-   is an OCHA-run index of situation reports from WHO country offices,
-   ministries of health, MSF, IFRC and the rest, and it is unusually strong in
-   exactly the places the other adapters miss — Afghanistan, Bangladesh,
-   Myanmar, Yemen, Pakistan, the Pacific islands.
+async function fetchEMROCountryReports(){
+  const countries = {};
+  const reports = [];
+  const problems = [];
 
-       https://api.reliefweb.int/v1/reports
-
-   Two things make it easy to use. It is a real JSON API with no key, and every
-   report is already tagged with its country's ISO 3166 code, so there is no
-   name matching to get wrong — the codes go through neCode() and land in the
-   Natural Earth key space directly.
-
-   What it does not give is structure: a report is a document, and its title is
-   the only reliably parseable thing on it. So the title has to name a disease
-   or the report is ignored, and reports older than the window below are never
-   requested. Anything that survives both filters is a genuine signal that
-   somebody official is writing about an outbreak there this month.
-   --------------------------------------------------------------------------- */
-
-const RW_WINDOW_DAYS = 90;
-
-function reliefWebURL(){
-  const since = new Date(Date.now() - RW_WINDOW_DAYS * 86400000)
-                  .toISOString().slice(0, 10) + 'T00:00:00+00:00';
-
-  return 'https://api.reliefweb.int/v1/reports'
-    + '?appname=pandemic-tracker'
-    + '&limit=200'
-    + '&sort[]=date.created:desc'
-    + '&fields[include][]=title'
-    + '&fields[include][]=date.created'
-    + '&fields[include][]=url'
-    + '&fields[include][]=primary_country.iso3'
-    + '&fields[include][]=primary_country.name'
-    + '&fields[include][]=source.shortname'
-    + '&filter[operator]=AND'
-    + '&filter[conditions][0][field]=theme.name'
-    + '&filter[conditions][0][value]=Health'
-    + '&filter[conditions][1][field]=date.created'
-    + '&filter[conditions][1][value][from]=' + encodeURIComponent(since);
-}
-
-/* If the conditions syntax is ever rejected, a plain keyword search over
-   titles still returns the same kind of document. Worth having: the whole
-   point of this adapter is the countries nobody else reaches. */
-const RW_FALLBACK =
-  'https://api.reliefweb.int/v1/reports'
-  + '?appname=pandemic-tracker&limit=200&sort[]=date.created:desc'
-  + '&query[value]=' + encodeURIComponent('outbreak OR epidemic OR "cases reported"')
-  + '&query[fields][]=title'
-  + '&fields[include][]=title&fields[include][]=date.created&fields[include][]=url'
-  + '&fields[include][]=primary_country.iso3&fields[include][]=primary_country.name'
-  + '&fields[include][]=source.shortname';
-
-async function fetchReliefWeb(){
-  let data = null, via = 'filtered', lastErr = null;
-
-  for(const [url, label] of [[reliefWebURL(), 'filtered'], [RW_FALLBACK, 'keyword fallback']]){
+  for(const country of EMRO_COUNTRY_REPORTS){
+    if(!country.enabled) continue;
     try{
-      const r = await fetch(url, { headers: { ...UA_HEADERS, accept: 'application/json' } });
-      if(!r.ok) throw new Error('HTTP ' + r.status);
-      const j = await r.json();
-      if(Array.isArray(j?.data)){ data = j.data; via = label; break; }
-      throw new Error('response had no data array');
-    }catch(err){ lastErr = err; }
-  }
+      /* find the newest PDF on the index page. The filenames have changed
+         format at least four times, so rank by the week and year in the link
+         text or the filename rather than trusting any one pattern. */
+      const r = await fetch(country.index, { headers:{ accept:'text/html', 'user-agent':UA } });
+      if(!r.ok) throw new Error('index HTTP ' + r.status);
+      const html = await r.text();
 
-  if(!data) throw new Error(lastErr ? lastErr.message : 'no response');
+      const links = [];
+      for(const m of html.matchAll(/<a[^>]+href=["']([^"']+\.pdf[^"']*)["'][^>]*>([\s\S]{0,160}?)<\/a>/gi)){
+        const href = m[1].startsWith('http') ? m[1] : 'https://www.emro.who.int' + (m[1].startsWith('/') ? '' : '/') + m[1];
+        if(!country.pdfMatch.test(href)) continue;
+        const label = cellText(m[2]);
+        const hay = label + ' ' + decodeURIComponent(href);
+        const wk = hay.match(/week[\s_#-]*(\d{1,2})/i);
+        const yr = hay.match(/(20\d{2})/);
+        links.push({
+          href, label,
+          week: wk ? +wk[1] : null,
+          year: yr ? +yr[1] : null,
+          rank: (yr ? +yr[1] : 0) * 100 + (wk ? +wk[1] : 0)
+        });
+      }
+      if(!links.length) throw new Error('no situation report PDFs linked on the index page');
 
-  const countries = {};
-  const unresolved = [];
-  let records = 0, noDisease = 0, noCountry = 0;
+      links.sort((a, b) => b.rank - a.rank);
+      const newest = links[0];
 
-  for(const row of data){
-    const f = row.fields || {};
-    const title = String(f.title || '').trim();
-    if(!title) continue;
+      /* date the report: the link text usually carries the week's date range,
+         otherwise fall back to the ISO week itself */
+      let end = sitrepEndDate(newest.label);
+      let dateVia = 'index link';
+      const text = await pdfText(newest.href);
+      if(!end){ end = sitrepEndDate(text.slice(0, 600)); dateVia = 'PDF header'; }
+      if(!end && newest.week && newest.year){ end = isoWeekEnd(newest.year, newest.week); dateVia = 'ISO week number'; }
+      if(!end) throw new Error('could not date the newest report');
 
-    const disease = diseaseFromTitle(title);
-    if(!disease){ noDisease++; continue; }
+      const ageDays = Math.round((Date.now() - end.getTime()) / 86400000);
+      const asOf = end.toISOString().slice(0, 10);
 
-    /* Only the PRIMARY country. Reports are often tagged with a dozen
-       countries for filing reasons, and honouring all of them would paint a
-       continent off one document. */
-    const raw = f.primary_country?.iso3;
-    const iso = neCode(raw);
-    if(!iso){
-      noCountry++;
-      if(raw) unresolved.push(String(raw).toUpperCase());
-      continue;
+      if(ageDays > EMRO_REPORT_MAX_AGE_DAYS){
+        reports.push({ iso:country.iso, label:country.label, asOf, ageDays, week:newest.week,
+                       url:newest.href, published:false, records:0, dateVia });
+        continue;
+      }
+
+      const rows = parseSitrep(text);
+      let added = 0;
+      for(const row of rows){
+        const cases  = row.cases  ?? row.weekCases  ?? null;
+        const deaths = row.deaths ?? row.weekDeaths ?? null;
+        if(cases == null && deaths == null) continue;
+        const cumulative = row.cases != null;
+
+        const entry = {
+          name: row.name,
+          cases,
+          deaths,
+          cfr: (cases && deaths && cases > 20) ? +(deaths / cases * 100).toFixed(1) : null,
+          per100k: null,
+          growth7d: null,
+          severity: severityFor(row.name, cases, deaths),
+          asOf,
+          source: `WHO ${country.label} weekly outbreak situation report`
+                + (newest.week ? `, epidemiological week ${newest.week}` : '')
+                + ` (${cumulative ? 'cumulative' : 'cases reported that week'}; read from the ${row.how.join(' and ')})`,
+          url: newest.href,
+          provisional: true
+        };
+        if(addIfNew(countries, country.iso, entry, 'medium')) added++;
+      }
+
+      reports.push({ iso:country.iso, label:country.label, asOf, ageDays, week:newest.week,
+                     url:newest.href, published:true, records:added, diseases:rows.length, dateVia });
+    }catch(err){
+      problems.push(`${country.label}: ${err.message}`);
     }
-
-    const cases  = findCases(title);
-    const deaths = findDeaths(title);
-    const asOf   = String(f.date?.created || '').slice(0, 10) || null;
-    const who    = f.source?.[0]?.shortname || f.source?.shortname || 'ReliefWeb';
-
-    mergeCountry(countries, iso, {
-      name: disease,
-      cases, deaths,
-      cfr: (cases && deaths && cases > 20) ? +(deaths / cases * 100).toFixed(1) : null,
-      per100k: null, growth7d: null,
-      severity: severityFor(disease, cases, deaths),
-      asOf,
-      source: `ReliefWeb — ${who}`,
-      url: f.url || 'https://reliefweb.int/updates',
-      provisional: true
-    }, 'low');
-    records++;
   }
 
-  return {
-    countries,
-    matched: Object.keys(countries).length,
-    records, reports: data.length, noDisease, noCountry, via,
-    unresolved: [...new Set(unresolved)].slice(0, 8)
-  };
+  return { countries, reports, problems };
 }
-
-/* ---------------------------------------------------------------------------
-   4j. SOURCE: WHO GLOBAL HEALTH OBSERVATORY  (the endemic baseline)
-
-   This one does NOT colour the map, and that is the point of it.
-
-   Everything above reports EVENTS: a bulletin, an alert, a notice. Events are
-   published where somebody is looking, which is why the globe has always had
-   a bias built into it — a country with good surveillance lights up, and a
-   country with none stays blank and reads as safe. Chad looking calmer than
-   France is an artefact of who files reports, not of where disease is.
-
-   GHO is the other half of the picture. It is WHO's own statistical database,
-   it is a documented public OData API with no key:
-
-       https://ghoapi.azureedge.net/api/Indicator      list every indicator
-       https://ghoapi.azureedge.net/api/{code}         the rows for one
-
-   and it carries each member state's ANNUAL reported case totals for the
-   notifiable diseases. That is slow data — a year or two behind, sometimes
-   more — so putting it in `diseases[]` would light half the world permanently
-   red off numbers from 2023. It goes in a separate `baseline` field that the
-   interface shows in the panel and never paints from.
-
-   What that buys: a country with nothing in `diseases` can now say either
-   "nothing reported, and WHO's last annual return was 4,100 cholera cases"
-   or "nothing reported, and no annual return either." Those are very
-   different statements and the map used to render them identically.
-
-   The indicator CODES are discovered at runtime rather than hard-coded. WHO
-   renumbers them between releases, and a hard-coded code that quietly 404s is
-   the kind of failure nobody notices for a month. This asks WHO what it has,
-   matches on the indicator NAME, and reports in _notes what it matched.
-   --------------------------------------------------------------------------- */
-
-const GHO_BASE = 'https://ghoapi.azureedge.net/api';
-
-/* Oldest annual return worth showing. Past this it is history, not baseline. */
-const GHO_MIN_YEAR = new Date().getUTCFullYear() - 6;
-
-/* Indicator names to look for, and the disease name to file the result under.
-   Matched against IndicatorName, case-insensitively, first hit wins. The GHO
-   immunization module publishes most of these as "<Disease> - number of
-   reported cases", which is why that shape appears so often. */
-const GHO_WANTED = [
-  [/^cholera\b.*reported cases|number of reported cases of cholera/i, 'Cholera'],
-  [/^measles\b.*reported cases/i,                                     'Measles'],
-  [/^diphtheria\b.*reported cases/i,                                  'Diphtheria'],
-  [/^pertussis\b.*reported cases/i,                                   'Pertussis'],
-  [/^(polio|poliomyelitis)\b.*reported cases/i,                       'Polio'],
-  [/^(japanese encephalitis)\b.*reported cases/i,                     'Japanese encephalitis'],
-  [/^(mumps)\b.*reported cases/i,                                     'Mumps'],
-  [/^(rubella)\b.*reported cases/i,                                   'Rubella'],
-  [/^(yellow fever)\b.*reported cases/i,                              'Yellow fever'],
-  [/^(neonatal tetanus|total tetanus)\b.*reported cases/i,            'Tetanus'],
-  [/number of (new and relapse )?tuberculosis cases|tuberculosis.*notified/i, 'Tuberculosis'],
-  [/estimated number of malaria cases|malaria.*number of.*cases/i,    'Malaria']
-];
-
-/* Six is enough to be useful and keeps the request count sane. */
-const GHO_MAX_INDICATORS = 6;
-
-async function ghoJSON(url){
-  const r = await fetch(url, { headers: { ...UA_HEADERS, accept: 'application/json' } });
-  if(!r.ok) throw new Error('GHO returned ' + r.status);
-  const j = await r.json();
-  if(!Array.isArray(j?.value)) throw new Error('GHO response had no value array');
-  return j.value;
-}
-
-async function fetchWHOBaseline(){
-  /* --- 1. ask WHO what it publishes, rather than assuming --- */
-  const catalogue = await ghoJSON(`${GHO_BASE}/Indicator`);
-
-  const picked = [];
-  const seen = new Set();
-  for(const [re, disease] of GHO_WANTED){
-    if(picked.length >= GHO_MAX_INDICATORS) break;
-    const hit = catalogue.find(i =>
-      !seen.has(i.IndicatorCode) && re.test(String(i.IndicatorName || '')));
-    if(hit){
-      seen.add(hit.IndicatorCode);
-      picked.push({ code: hit.IndicatorCode, label: hit.IndicatorName, disease });
-    }
-  }
-
-  if(!picked.length) throw new Error(`none of the wanted indicators are in GHO's catalogue of ${catalogue.length}`);
-
-  /* --- 2. pull the recent rows for each, all at once --- */
-  const results = await Promise.allSettled(picked.map(async p => {
-    const url = `${GHO_BASE}/${encodeURIComponent(p.code)}`
-              + `?$filter=SpatialDimType%20eq%20%27COUNTRY%27%20and%20TimeDim%20ge%20${GHO_MIN_YEAR}`;
-    return { ...p, rows: await ghoJSON(url) };
-  }));
-
-  /* --- 3. keep only the newest year each country actually reported --- */
-  const baseline = {};
-  const used = [];
-  const failed = [];
-
-  for(let i = 0; i < results.length; i++){
-    const r = results[i];
-    if(r.status !== 'fulfilled'){ failed.push(picked[i].disease); continue; }
-
-    const { disease, label, code, rows } = r.value;
-    const newest = new Map();          // iso -> row
-
-    for(const row of rows){
-      if(row.SpatialDimType !== 'COUNTRY') continue;
-      const iso = neCode(row.SpatialDim);
-      const year = Number(row.TimeDim);
-      const val = row.NumericValue;
-      if(!iso || !Number.isFinite(year) || val == null) continue;
-
-      const prev = newest.get(iso);
-      if(!prev || year > Number(prev.TimeDim)) newest.set(iso, row);
-    }
-
-    for(const [iso, row] of newest){
-      if(!baseline[iso]) baseline[iso] = [];
-      baseline[iso].push({
-        name: disease,
-        cases: Math.round(Number(row.NumericValue)),
-        year: Number(row.TimeDim),
-        source: `WHO Global Health Observatory — ${label}`,
-        url: `https://www.who.int/data/gho/data/indicators/indicator-details/GHO/${encodeURIComponent(code)}`
-      });
-    }
-
-    used.push(`${disease} (${code}, ${newest.size} countries)`);
-  }
-
-  /* Biggest number first, so the panel leads with what matters. */
-  for(const iso of Object.keys(baseline)){
-    baseline[iso].sort((a, b) => (b.cases || 0) - (a.cases || 0));
-    baseline[iso] = baseline[iso].slice(0, 6);
-  }
-
-  return {
-    baseline,
-    countries: Object.keys(baseline).length,
-    catalogue: catalogue.length,
-    used, failed
-  };
-}
-
-/* ---------------------------------------------------------------------------
-   4k. THE OFFICIAL WHO SURFACES
-
-   ⚠ READ THIS BEFORE ASKING WHY THESE ARE LINKS AND NOT FEEDS.
-
-   Four things people reasonably assume are scrapeable are not:
-
-     WHO Health Emergency Dashboard   extranet.who.int/publicemergency
-       An Esri front end. There is no documented public API behind it, and the
-       page's own notice says it is a SUBSET of events reported through IHR
-       channels, refreshed every 30 minutes, offered for general information
-       with the interpretation left to the reader. Reverse-engineering the
-       tile service would give numbers with no contract behind them, which is
-       worse than no numbers.
-
-     Weekly Epidemiological Record    who.int/publications/journals/...
-       Published as a PDF. Authoritative, and the right thing to cite, but
-       parsing a PDF layout weekly is a maintenance liability, not a feature.
-
-     Per-disease dashboards           cholera, mpox, measles, MERS, polio
-       Shiny and Power BI applications. Same problem as the emergency
-       dashboard: a private endpoint, no contract, silent breakage.
-
-     EIOS                             Epidemic Intelligence from Open Sources
-       NOT PUBLIC. Access is restricted to WHO and to designated national
-       public health authorities. There is no open endpoint and there is no
-       way for this project to have one. Anything claiming otherwise is not
-       EIOS.
-
-   So they are carried as an attribution layer instead: every one is named,
-   linked, and labelled with what it is, and the interface points a reader at
-   the authoritative surface for anything this globe shows. For a project that
-   cannot own the numbers, sending people to the body that does is the honest
-   design, and it is also what makes the tracker checkable.
-   --------------------------------------------------------------------------- */
-
-const WHO_OFFICIAL = [
-  { id:'emergency-dashboard',
-    name:'WHO Health Emergency Dashboard',
-    url:'https://extranet.who.int/publicemergency',
-    kind:'dashboard', access:'public',
-    note:'Events reported through IHR channels, refreshed every 30 minutes. A subset, not a complete picture.' },
-
-  { id:'don',
-    name:'WHO Disease Outbreak News',
-    url:'https://www.who.int/emergencies/disease-outbreak-news',
-    kind:'bulletin', access:'public', feedsThisSite:true,
-    note:'Read directly by this tracker (§4a). The primary record for a declared outbreak.' },
-
-  { id:'wer',
-    name:'Weekly Epidemiological Record',
-    url:'https://www.who.int/publications/journals/weekly-epidemiological-record',
-    kind:'journal', access:'public',
-    note:'WHO\'s weekly epidemiological journal, published as PDF. The citable version of most figures here.' },
-
-  { id:'cholera',
-    name:'WHO Global Cholera Dashboard',
-    url:'https://www.who.int/teams/global-cholera-and-acute-watery-diarrhoea-control',
-    kind:'disease-dashboard', access:'public', disease:'Cholera' },
-
-  { id:'mpox',
-    name:'WHO Global Mpox Trends',
-    url:'https://worldhealthorg.shinyapps.io/mpx_global/',
-    kind:'disease-dashboard', access:'public', disease:'Mpox' },
-
-  { id:'measles',
-    name:'WHO Measles and Rubella Surveillance',
-    url:'https://immunizationdata.who.int/global?topic=Provisional-measles-and-rubella-surveillance',
-    kind:'disease-dashboard', access:'public', disease:'Measles' },
-
-  { id:'influenza',
-    name:'WHO FluNet / Global Influenza Programme',
-    url:'https://www.who.int/tools/flunet',
-    kind:'disease-dashboard', access:'public', disease:'Influenza', feedsThisSite:true },
-
-  { id:'polio',
-    name:'Global Polio Eradication Initiative',
-    url:'https://polioeradication.org/polio-today/polio-now/this-week/',
-    kind:'disease-dashboard', access:'public', disease:'Polio' },
-
-  { id:'gho',
-    name:'WHO Global Health Observatory',
-    url:'https://www.who.int/data/gho',
-    kind:'statistics', access:'public', feedsThisSite:true,
-    note:'Annual reported case totals per member state. Supplies the endemic baseline shown in each country panel (§4j).' },
-
-  { id:'eios',
-    name:'EIOS — Epidemic Intelligence from Open Sources',
-    url:'https://www.who.int/initiatives/eios',
-    kind:'intelligence', access:'restricted',
-    note:'Restricted to WHO and designated national public health authorities. No public API exists, so this tracker does not and cannot use it.' }
-];
 
 /* ---------------------------------------------------------------------------
    5. BASELINE
@@ -1956,66 +2134,8 @@ const BASELINE = {};   // NICD now supplies South Africa directly (§4g)
    emit and goes and builds one automatically for anything new. See §7 below. */
 
 /* ---------------------------------------------------------------------------
-   5b. COVERAGE AUDIT
-
-   The single most useful line in _notes. It answers the question a reviewer
-   will actually ask — "is this globe comprehensive, or does it just look
-   comprehensive?" — by naming the large countries that came back with nothing
-   at all on this run.
-
-   A country appearing here is not a bug. It means no source reported an
-   outbreak there today, which for somewhere like Japan or Australia is
-   usually the truth. It becomes a bug when the same country is listed every
-   single day, because that is the signature of a coverage hole rather than a
-   quiet month.
+   6. THE HANDLER — this is what runs when the globe calls /api/outbreaks
    --------------------------------------------------------------------------- */
-
-const WATCH_LIST = {
-  CHN:'China', IND:'India', USA:'United States', IDN:'Indonesia', PAK:'Pakistan',
-  NGA:'Nigeria', BRA:'Brazil', BGD:'Bangladesh', RUS:'Russia', MEX:'Mexico',
-  JPN:'Japan', ETH:'Ethiopia', PHL:'Philippines', EGY:'Egypt', VNM:'Viet Nam',
-  COD:'DR Congo', TUR:'T\u00fcrkiye', IRN:'Iran', DEU:'Germany', THA:'Thailand',
-  GBR:'United Kingdom', FRA:'France', ITA:'Italy', ZAF:'South Africa',
-  TZA:'Tanzania', MMR:'Myanmar', KOR:'South Korea', COL:'Colombia',
-  KEN:'Kenya', ESP:'Spain', ARG:'Argentina', DZA:'Algeria', SDN:'Sudan',
-  UKR:'Ukraine', IRQ:'Iraq', AFG:'Afghanistan', POL:'Poland', CAN:'Canada',
-  MAR:'Morocco', SAU:'Saudi Arabia', UZB:'Uzbekistan', PER:'Peru',
-  AUS:'Australia', NPL:'Nepal', MYS:'Malaysia', LKA:'Sri Lanka'
-};
-
-function coverageNote(countries){
-  const dark = Object.entries(WATCH_LIST)
-    .filter(([iso]) => !countries[iso] || !countries[iso].diseases?.length)
-    .map(([, name]) => name);
-
-  if(!dark.length) return `Coverage: every country on the watch list reported something.`;
-  return `Coverage: ${Object.keys(WATCH_LIST).length - dark.length}/`
-       + `${Object.keys(WATCH_LIST).length} watch-list countries have data. `
-       + `Nothing today from: ${dark.join(', ')}.`;
-}
-
-/* ---------------------------------------------------------------------------
-   6. THE HANDLER \u2014 this is what runs when the globe calls /api/outbreaks
-
-   The nine adapters all start AT ONCE and are collected in a fixed order.
-   Started one after another they added up to more than Vercel allows a
-   function to run for, and the whole response died with them; started
-   together, the request takes as long as the slowest single source rather
-   than the sum of all of them.
-
-   Each one also gets a hard deadline. An agency site that accepts the
-   connection and then never answers used to hang the entire endpoint \u2014 now
-   it costs that one source and is written into _notes.
-   --------------------------------------------------------------------------- */
-
-/* Reject after `ms` no matter what the underlying fetch is doing. */
-function withDeadline(promise, ms, label){
-  let timer;
-  const bell = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms);
-  });
-  return Promise.race([promise, bell]).finally(() => clearTimeout(timer));
-}
 
 export default async function handler(req, res){
   // Tell Vercel's CDN to cache this. WHO gets hit ~4 times a day total.
@@ -2023,33 +2143,14 @@ export default async function handler(req, res){
     'Cache-Control',
     `public, s-maxage=${CACHE_HOURS*3600}, stale-while-revalidate=86400`
   );
-  res.setHeader('Access-Control-Allow-Origin', '*');
 
   const notes = [];
   let countries = {};
   let admin1 = {};
 
-  /* Fire everything now. Attaching a no-op catch immediately keeps Node from
-     treating a rejection as unhandled while we are still awaiting an earlier
-     job \u2014 the real error is caught properly in each block below. */
-  const t0 = Date.now();
-  const jobs = {
-    who:       withDeadline(fetchWHO(),        ADAPTER_TIMEOUT_MS, 'WHO'),
-    erviss:    withDeadline(fetchERVISS(),     ADAPTER_TIMEOUT_MS, 'ERVISS'),
-    flunet:    withDeadline(fetchFluNet(),     ADAPTER_TIMEOUT_MS, 'FluNet'),
-    paho:      withDeadline(fetchPAHO(),       ADAPTER_TIMEOUT_MS, 'PAHO'),
-    acdc:      withDeadline(fetchAfricaCDC(),  ADAPTER_TIMEOUT_MS, 'Africa CDC'),
-    cdcTravel: withDeadline(fetchCDCTravel(),  ADAPTER_TIMEOUT_MS, 'CDC travel notices'),
-    reliefweb: withDeadline(fetchReliefWeb(),  ADAPTER_TIMEOUT_MS, 'ReliefWeb'),
-    states:    withDeadline(fetchCDCStates(),  ADAPTER_TIMEOUT_MS, 'CDC states'),
-    nicd:      withDeadline(fetchNICD(),       ADAPTER_TIMEOUT_MS, 'NICD'),
-    gho:       withDeadline(fetchWHOBaseline(), GHO_TIMEOUT_MS,    'WHO GHO')
-  };
-  for(const p of Object.values(jobs)) p.catch(() => {});
-
   try{
-    const who = await jobs.who;
-    mergeAll(countries, who.countries, 'medium');
+    const who = await fetchWHO();
+    countries = who.countries;
     notes.push(`WHO: read ${who.count} bulletins, matched ${Object.keys(who.countries).length} countries (${who.rescued} from multi-country bulletins)`);
     if(who.skipped.length){
       notes.push(`Not a single country, ignored: ${[...new Set(who.skipped)].join(', ')}`);
@@ -2059,10 +2160,13 @@ export default async function handler(req, res){
   }
 
   try{
-    const eu = await jobs.erviss;
-    mergeAll(countries, eu.countries, 'high');
+    const eu = await fetchERVISS();
+    for(const [iso, rec] of Object.entries(eu.countries)){
+      if(!countries[iso]) countries[iso] = { conf:'high', diseases:[] };
+      countries[iso].diseases.push(...rec.diseases);
+    }
     if(!eu.published){
-      notes.push(`ERVISS: HIDDEN \u2014 newest week ${eu.latest} is about ${eu.age} weeks old. `
+      notes.push(`ERVISS: HIDDEN — newest week ${eu.latest} is about ${eu.age} weeks old. `
         + `Set ERVISS_SHOW_STALE = true to publish it anyway.`);
     } else if(eu.stale){
       notes.push(`ERVISS: matched ${eu.matched} European countries, but newest week is ${eu.latest} `
@@ -2077,8 +2181,11 @@ export default async function handler(req, res){
   }
 
   try{
-    const flu = await jobs.flunet;
-    mergeAll(countries, flu.countries, 'high');
+    const flu = await fetchFluNet();
+    for(const [iso, rec] of Object.entries(flu.countries)){
+      if(!countries[iso]) countries[iso] = { conf:'high', diseases:[] };
+      countries[iso].diseases.push(...rec.diseases);
+    }
     notes.push(`FluNet: matched ${flu.matched} countries, newest week ${flu.newestWeek}`);
     notes.push(`FluNet columns detected: ${JSON.stringify(flu.columns)}`);
   }catch(err){
@@ -2088,8 +2195,11 @@ export default async function handler(req, res){
   }
 
   try{
-    const paho = await jobs.paho;
-    mergeAll(countries, paho.countries, 'high');
+    const paho = await fetchPAHO();
+    for(const [iso, rec] of Object.entries(paho.countries)){
+      if(!countries[iso]) countries[iso] = { conf:'high', diseases:[] };
+      countries[iso].diseases.push(...rec.diseases);
+    }
     notes.push(`PAHO ARBO: matched ${paho.matched} countries in the Americas, `
       + `bulletin ${paho.year} through EW ${paho.week ?? '?'} (${paho.asOf})`);
     if(paho.unmatched.length){
@@ -2102,8 +2212,11 @@ export default async function handler(req, res){
   }
 
   try{
-    const acdc = await jobs.acdc;
-    mergeAll(countries, acdc.countries, 'medium');
+    const acdc = await fetchAfricaCDC();
+    for(const [iso, rec] of Object.entries(acdc.countries)){
+      if(!countries[iso]) countries[iso] = { conf:'medium', diseases:[] };
+      countries[iso].diseases.push(...rec.diseases);
+    }
     notes.push(`Africa CDC: matched ${acdc.matched} countries from `
       + `${acdc.parsedBriefs}/${acdc.briefs} briefs (via ${acdc.via})`);
     if(acdc.unmatched.length){
@@ -2115,35 +2228,7 @@ export default async function handler(req, res){
   }
 
   try{
-    const trav = await jobs.cdcTravel;
-    mergeAll(countries, trav.countries, 'medium');
-    notes.push(`CDC travel notices: read ${trav.notices} notices, matched ${trav.matched} countries `
-      + `(${trav.records} country-disease records; ${trav.global} notices named no country). `
-      + `By level: ${JSON.stringify(trav.levels)}`);
-    if(trav.unresolved.length){
-      notes.push(`CDC notice titles with no disease matched: ${trav.unresolved.join(' | ')}`);
-    }
-  }catch(err){
-    notes.push('CDC travel notices fetch failed: ' + err.message
-      + ' | test it yourself: https://wwwnc.cdc.gov/travel/rss/notices.xml');
-  }
-
-  try{
-    const rw = await jobs.reliefweb;
-    mergeAll(countries, rw.countries, 'low');
-    notes.push(`ReliefWeb: scanned ${rw.reports} reports from the last ${RW_WINDOW_DAYS} days `
-      + `(via ${rw.via}), matched ${rw.matched} countries from ${rw.records} reports; `
-      + `${rw.noDisease} named no disease, ${rw.noCountry} no usable country`);
-    if(rw.unresolved.length){
-      notes.push(`ReliefWeb ISO codes with no Natural Earth equivalent: ${rw.unresolved.join(', ')}`);
-    }
-  }catch(err){
-    notes.push('ReliefWeb fetch failed: ' + err.message
-      + ' | test it yourself: https://api.reliefweb.int/v1/reports?appname=test&limit=3');
-  }
-
-  try{
-    const st = await jobs.states;
+    const st = await fetchCDCStates();
     Object.assign(admin1, st.admin1);
     notes.push(`CDC states: matched ${st.matched} US states/jurisdictions, week ending ${st.newest}`);
     notes.push(`CDC state columns detected: ${JSON.stringify(st.columns)}`);
@@ -2156,7 +2241,7 @@ export default async function handler(req, res){
   }
 
   try{
-    const za = await jobs.nicd;
+    const za = await fetchNICD();
     Object.assign(admin1, za.admin1);
     notes.push(`NICD: matched ${za.matched} South African provinces (${za.disease}, `
       + `${za.used.scope}) from "${za.used.title.slice(0,60)}" dated ${za.used.date}`);
@@ -2165,25 +2250,94 @@ export default async function handler(req, res){
       + ' | test it yourself: https://www.nicd.ac.za/wp-json/wp/v2/posts?search=measles&per_page=3');
   }
 
-  let baseline = {};
   try{
-    const gho = await jobs.gho;
-    baseline = gho.baseline;
-    notes.push(`WHO GHO: ${gho.countries} countries carry an endemic baseline, `
-      + `matched ${gho.used.length} indicators out of a catalogue of ${gho.catalogue}: `
-      + gho.used.join('; '));
-    if(gho.failed.length){
-      notes.push(`GHO indicators that failed to load: ${gho.failed.join(', ')}`);
+    const emro = await fetchEMRO();
+    let added = 0;
+    for(const [iso, rec] of Object.entries(emro.countries)){
+      for(const d of rec.diseases) if(addIfNew(countries, iso, d, rec.conf)) added++;
     }
-    notes.push('GHO is ANNUAL data and never colours the map. It sits in `baseline` '
-      + 'so a quiet country can say "nothing reported this week, and here is what '
-      + 'WHO\'s last annual return said" instead of just looking safe.');
+    if(emro.published){
+      notes.push(`WHO EMRO: parsed ${emro.parsed} rows across ${emro.matched} countries, `
+        + `added ${added} (table stamped ${emro.asOf}, ${emro.ageDays} days old, via ${emro.via}; `
+        + `${emro.noUpdate} rows from countries that did not report this period)`);
+    } else {
+      notes.push(`WHO EMRO: HIDDEN — the table is stamped ${emro.asOf || 'no date found'}`
+        + (emro.ageDays != null ? ` (${emro.ageDays} days old)` : '')
+        + `, past the ${EMRO_MAX_AGE_DAYS}-day limit, so its ${emro.parsed} rows across `
+        + `${emro.matched} countries were NOT published. EMRO updates this table irregularly; `
+        + `the adapter starts publishing on its own when they do. `
+        + `Set EMRO_SHOW_STALE = true to publish it anyway. Source: ${emro.url}`);
+    }
+    if(emro.unmatched.length){
+      notes.push(`EMRO names not in the ISO map: ${emro.unmatched.join(', ')}`);
+    }
   }catch(err){
-    notes.push('WHO GHO fetch failed: ' + err.message
-      + ' | test it yourself: https://ghoapi.azureedge.net/api/Indicator');
+    notes.push('WHO EMRO fetch failed: ' + err.message
+      + ' | test it yourself: https://www.emro.who.int/pandemic-epidemic-diseases/outbreaks/index.html');
   }
 
-  notes.push(`All ten sources collected in ${((Date.now() - t0) / 1000).toFixed(1)}s (run in parallel)`);
+  try{
+    const sit = await fetchEMROCountryReports();
+    let added = 0;
+    for(const [iso, rec] of Object.entries(sit.countries)){
+      for(const d of rec.diseases) if(addIfNew(countries, iso, d, rec.conf)) added++;
+    }
+    for(const rep of sit.reports){
+      if(rep.published){
+        notes.push(`EMRO sitrep ${rep.label}: week ${rep.week ?? '?'} ending ${rep.asOf} `
+          + `(${rep.ageDays}d old, dated via ${rep.dateVia}), read ${rep.diseases} diseases, `
+          + `added ${added} records — ${rep.url}`);
+      } else {
+        notes.push(`EMRO sitrep ${rep.label}: HIDDEN — newest report is week ${rep.week ?? '?'} `
+          + `ending ${rep.asOf}, ${rep.ageDays} days old, past the ${EMRO_REPORT_MAX_AGE_DAYS}-day limit. `
+          + `The country office has stopped publishing weekly, or the index page moved.`);
+      }
+    }
+    if(!sit.reports.length && !sit.problems.length){
+      notes.push('EMRO sitreps: no countries enabled in EMRO_COUNTRY_REPORTS');
+    }
+    for(const p of sit.problems) notes.push('EMRO sitrep failed — ' + p);
+  }catch(err){
+    notes.push('EMRO sitreps fetch failed: ' + err.message);
+  }
+
+  /* The advisory sources run last on purpose. addIfNew() drops anything a
+     counting source has already reported for that country, so these two only
+     ever fill gaps — they cannot overwrite a figure that came with a number. */
+
+  try{
+    const cdc = await fetchCDCNotices();
+    let added = 0;
+    for(const [iso, rec] of Object.entries(cdc.countries)){
+      for(const d of rec.diseases) if(addIfNew(countries, iso, d, 'medium')) added++;
+    }
+    notes.push(`CDC travel notices: read ${cdc.notices} notices, matched `
+      + `${cdc.matched} countries, added ${added} new records `
+      + `(${cdc.records - added} already covered by a counting source; `
+      + `${cdc.globalsRead} global notices expanded)`);
+    if(cdc.unmatched.length){
+      notes.push(`CDC notices with no country or disease matched: ${cdc.unmatched.join(' | ')}`);
+    }
+  }catch(err){
+    notes.push('CDC travel notices fetch failed: ' + err.message
+      + ' | test it yourself: https://wwwnc.cdc.gov/travel/rss/notices.xml');
+  }
+
+  try{
+    const rw = await fetchReliefWeb();
+    let added = 0;
+    for(const [iso, rec] of Object.entries(rw.countries)){
+      for(const d of rec.diseases) if(addIfNew(countries, iso, d, 'low')) added++;
+    }
+    notes.push(`ReliefWeb: read ${rw.reports} reports (query ${rw.usedAttempt}), matched `
+      + `${rw.matched} countries, added ${added} new records`);
+    if(rw.skipped.length){
+      notes.push(`ReliefWeb reports with no disease or country matched: ${rw.skipped.join(' | ')}`);
+    }
+  }catch(err){
+    notes.push('ReliefWeb fetch failed: ' + err.message
+      + ' | test it yourself: https://api.reliefweb.int/v1/reports?appname=test&limit=2');
+  }
 
   // merge the baseline in without overwriting anything live
   for(const [iso, rec] of Object.entries(BASELINE)){
@@ -2203,15 +2357,7 @@ export default async function handler(req, res){
      entry is marked pending and the next request retries it — the response
      still goes out either way.
      ----------------------------------------------------------------------- */
-  const payload = { countries, admin1, cities: {}, baseline, official: WHO_OFFICIAL };
-
-  notes.push(`TOTAL: ${Object.keys(countries).length} countries and `
-    + `${Object.keys(admin1).length} subnational regions carry data`);
-  notes.push(coverageNote(countries));
-  const quietWithBaseline = Object.keys(baseline)
-    .filter(iso => !countries[iso] || !countries[iso].diseases?.length).length;
-  notes.push(`${quietWithBaseline} countries have no active report but do have a WHO `
-    + `annual baseline, so the panel can say what is normally there rather than nothing.`);
+  const payload = { countries, admin1, cities: {} };
 
   let guidance = {};
   try{
