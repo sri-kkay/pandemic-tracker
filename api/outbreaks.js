@@ -22,6 +22,9 @@
                                         publishes it (see the note in §4j)
      §4k EMRO country weekly sitreps    Afghanistan, read out of the weekly
                                         PDF the country office publishes
+     §4l WHO AFRO weekly bulletin       all 47 African Region countries
+     §4m the press wire                 an open web search, allowlisted,
+                                        corroborated, and never numeric
 
    The last two are advisory sources: they say an outbreak exists without
    giving case counts, so they run last and only fill gaps a counting source
@@ -2197,6 +2200,488 @@ async function fetchEMROCountryReports(){
 }
 
 /* ---------------------------------------------------------------------------
+   4l. SOURCE: WHO AFRO WEEKLY BULLETIN ON OUTBREAKS AND OTHER EMERGENCIES
+
+   The regional bulletin covers all 47 countries in the WHO African Region and
+   is published every week. This is what reaches Botswana, Lesotho, eSwatini,
+   Malawi, Eritrea, the Gambia, Guinea-Bissau and Equatorial Guinea — countries
+   Africa CDC's briefs mention only occasionally and nothing else covers.
+
+   HOW THE NUMBERS ARE READ, AND HOW THEY ARE CHECKED
+   --------------------------------------------------
+   Like the country sitreps in §4k, this reads sentences, not the layout:
+
+     "Since the outbreak began in October 2024, Zambia has reported a
+      cumulative 398 confirmed mpox cases with three deaths (CFR 0.8%)…"
+
+   What makes this source safer than most is that the bulletin usually prints
+   the case fatality ratio alongside the counts. That is a free checksum: if
+   the cases and deaths this parser pulled out do not reproduce the CFR the
+   bulletin printed, the parse is wrong and the record is dropped. A figure
+   that fails its own arithmetic never reaches the globe.
+
+   Where no CFR is printed the record still stands, but it carries the usual
+   provisional flag and medium confidence.
+
+   Sentences naming two countries ("the outbreak in DRC and Uganda") are read
+   for neither — there is no honest way to decide which country the number
+   belongs to, so the numbers are skipped rather than guessed.
+   --------------------------------------------------------------------------- */
+
+const AFRO_INDEXES = [
+  'https://www.afro.who.int/health-topics/disease-outbreaks/outbreaks-and-other-emergencies-updates',
+  'https://www.afro.who.int/outbreaks-and-emergencies-updates',
+  'https://www.afro.who.int/publications/weekly-bulletin-outbreaks-and-other-emergencies'
+];
+const AFRO_MAX_AGE_DAYS = 45;
+const AFRO_FOLLOW_LIMIT = 3;     // publication pages to open looking for a PDF
+
+/* The bulletin prints its own CFR. Treat a parse that cannot reproduce it,
+   within a quarter of its value, as a misread rather than a discovery. */
+function cfrAgrees(cases, deaths, printed){
+  if(printed == null) return true;             // nothing to check against
+  if(!cases || deaths == null) return false;
+  const computed = (deaths / cases) * 100;
+  const slack = Math.max(0.5, printed * 0.25);
+  return Math.abs(computed - printed) <= slack;
+}
+
+function splitSentences(text){
+  return String(text)
+    .replace(/\s+/g, ' ')
+    .split(/(?<=[.!?])\s+(?=[A-Z(])/)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+/** Read one bulletin's text into per-country disease records. */
+function parseAFRO(text){
+  const out = new Map();        // "ISO|Disease" -> record
+  const sentences = splitSentences(text);
+
+  const NUM = '([0-9][0-9,\\s]*|one|two|three|four|five|six|seven|eight|nine|ten)';
+  const caseRe  = new RegExp(NUM + '\\s*(?:\\([0-9,]+\\)\\s*)?(?:new\\s+|confirmed\\s+|suspected\\s+|laboratory[- ]confirmed\\s+|cumulative\\s+)*[a-z ]{0,30}?cases?\\b', 'i');
+  const deathRe = new RegExp(NUM + '\\s*(?:\\([0-9,]+\\)\\s*)?(?:new\\s+|confirmed\\s+|suspected\\s+|associated\\s+|community\\s+)*deaths?\\b', 'i');
+  const cfrRe   = /CFR[:\s]*([0-9]+(?:\.[0-9]+)?)\s*%/i;
+
+  sentences.forEach((sentence, i) => {
+    /* The bulletin names a disease once and then writes two or three
+       sentences about it, so a cumulative figure often sits in a sentence
+       that never repeats the disease name:
+
+         "From 1 to 25 January 2026, Liberia reported four new confirmed
+          Lassa fever cases, including one death."
+         "Cumulatively, a total of 41 confirmed cases with nine deaths have
+          been reported from Liberia…"
+
+       The second sentence carries the number that matters. Inherit the
+       disease from the sentence immediately before, and only from there. */
+    let disease = diseaseFromText(sentence);
+    let diseaseVia = 'sentence';
+    if(!disease && i > 0){
+      disease = diseaseFromText(sentences[i - 1]);
+      diseaseVia = 'previous sentence';
+    }
+    if(!disease) return;
+
+    /* which country? exactly one in the sentence, or exactly one in the
+       sentence before it — a bulletin paragraph names the country once and
+       then keeps talking about it */
+    let isos = scanForCountries(sentence);
+    let via = 'sentence';
+    if(isos.length === 0 && i > 0){
+      const prev = scanForCountries(sentences[i - 1]);
+      if(prev.length === 1){ isos = prev; via = 'previous sentence'; }
+    }
+    if(isos.length !== 1) return;              // 0 or 2+: no honest attribution
+    const iso = isos[0];
+
+    const cm = sentence.match(caseRe);
+    const dm = sentence.match(deathRe);
+    const fm = sentence.match(cfrRe);
+    const cases  = cm ? countOf(cm[1]) : null;
+    const deaths = dm ? countOf(dm[1]) : null;
+    const cfr    = fm ? parseFloat(fm[1]) : null;
+    if(cases == null && deaths == null) return;
+
+    // the checksum
+    if(!cfrAgrees(cases, deaths, cfr)) return;
+    if(cases != null && deaths != null && deaths > cases) return;   // impossible
+
+    const key = iso + '|' + disease;
+    const prev = out.get(key);
+    // a bulletin repeats a figure in several forms; keep the largest, which is
+    // the cumulative one
+    if(prev && (prev.cases ?? 0) >= (cases ?? 0)) return;
+    out.set(key, { iso, disease, cases, deaths, cfr,
+                   via: diseaseVia === 'sentence' ? via : `${via} / disease from ${diseaseVia}`,
+                   quote: sentence.slice(0, 180) });
+  });
+
+  return [...out.values()];
+}
+
+async function fetchAFRO(){
+  /* find the newest bulletin PDF. The links sit on an index page, sometimes
+     directly and sometimes behind a publication page, and the files live on
+     either afro.who.int or iris.who.int. */
+  const pdfs = [];
+  const follow = [];
+
+  for(const index of AFRO_INDEXES){
+    try{
+      const r = await fetch(index, { headers:{ accept:'text/html', 'user-agent':UA } });
+      if(!r.ok) continue;
+      const html = await r.text();
+
+      for(const m of html.matchAll(/<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]{0,180}?)<\/a>/gi)){
+        const href = m[1].startsWith('http') ? m[1]
+                   : 'https://www.afro.who.int' + (m[1].startsWith('/') ? '' : '/') + m[1];
+        const label = cellText(m[2]);
+        const hay = label + ' ' + decodeURIComponent(href);
+        if(!/week/i.test(hay)) continue;
+
+        const wk = hay.match(/week[\s_#:-]*(\d{1,2})/i);
+        const yr = hay.match(/(20\d{2})/);
+        const entry = { href, label, week: wk ? +wk[1] : null, year: yr ? +yr[1] : null,
+                        rank: (yr ? +yr[1] : 0) * 100 + (wk ? +wk[1] : 0) };
+
+        if(/\.pdf($|\?)/i.test(href) || /bitstream/i.test(href)) pdfs.push(entry);
+        else if(/bulletin|publication/i.test(hay)) follow.push(entry);
+      }
+      if(pdfs.length) break;
+    }catch(err){ /* try the next index */ }
+  }
+
+  // no direct PDF links: open the newest publication pages and look inside
+  if(!pdfs.length && follow.length){
+    follow.sort((a, b) => b.rank - a.rank);
+    for(const page of follow.slice(0, AFRO_FOLLOW_LIMIT)){
+      try{
+        const r = await fetch(page.href, { headers:{ accept:'text/html', 'user-agent':UA } });
+        if(!r.ok) continue;
+        const html = await r.text();
+        for(const m of html.matchAll(/href=["']([^"']+(?:\.pdf|bitstreams?\/[^"']+\/(?:download|content)))["']/gi)){
+          const href = m[1].startsWith('http') ? m[1] : 'https://www.afro.who.int' + m[1];
+          pdfs.push({ ...page, href });
+        }
+        if(pdfs.length) break;
+      }catch(err){ /* next */ }
+    }
+  }
+
+  if(!pdfs.length) throw new Error('no bulletin PDF could be located from the index pages');
+
+  pdfs.sort((a, b) => b.rank - a.rank);
+  const newest = pdfs[0];
+
+  const text = await pdfText(newest.href);
+
+  /* date it: the bulletin's own header carries the reporting period */
+  let end = sitrepEndDate(text.slice(0, 1200)) || sitrepEndDate(newest.label);
+  let dateVia = 'bulletin header';
+  if(!end && newest.week && newest.year){ end = isoWeekEnd(newest.year, newest.week); dateVia = 'ISO week number'; }
+  if(!end) throw new Error('could not date the bulletin');
+
+  const asOf = end.toISOString().slice(0, 10);
+  const ageDays = Math.round((Date.now() - end.getTime()) / 86400000);
+
+  const rows = parseAFRO(text);
+  const countries = {};
+  let added = 0;
+
+  if(ageDays <= AFRO_MAX_AGE_DAYS){
+    for(const row of rows){
+      const entry = {
+        name: row.disease,
+        cases: row.cases,
+        deaths: row.deaths,
+        cfr: row.cfr ?? ((row.cases && row.deaths && row.cases > 20)
+              ? +(row.deaths / row.cases * 100).toFixed(1) : null),
+        per100k: null,
+        growth7d: null,
+        severity: severityFor(row.disease, row.cases, row.deaths),
+        asOf,
+        source: `WHO AFRO weekly bulletin`
+              + (newest.week ? `, week ${newest.week}` : '')
+              + (row.cfr != null ? ' (figures check out against the printed CFR)' : ''),
+        url: newest.href,
+        provisional: true
+      };
+      if(addIfNew(countries, row.iso, entry, 'medium')) added++;
+    }
+  }
+
+  return {
+    countries, added, parsed: rows.length,
+    matched: Object.keys(countries).length,
+    asOf, ageDays, week: newest.week, dateVia,
+    published: ageDays <= AFRO_MAX_AGE_DAYS,
+    url: newest.href
+  };
+}
+
+/* ---------------------------------------------------------------------------
+   4m. SOURCE: THE PRESS WIRE — searching the open web, under rules
+
+   Every other adapter in this file reads a source somebody chose in advance.
+   This one searches. It asks GDELT — a public, keyless index of news in 65
+   languages — what is being reported about outbreaks in the last week, and
+   turns credible, corroborated coverage into a signal on the globe.
+
+   That is a genuinely different kind of source, and it is the one most likely
+   to put something wrong on a disease map, so the rules below are strict and
+   deliberately conservative. Read them before changing any of them.
+
+   RULE 1 — ALLOWLIST, NEVER BLOCKLIST
+   A domain is either on the list below or its article is discarded. There is
+   no "looks reputable" path. A blocklist would need to anticipate every bad
+   actor; an allowlist only needs to name the good ones, and being wrong means
+   missing a story rather than publishing a false one.
+
+   RULE 2 — THE WIRE NEVER PUBLISHES A NUMBER
+   Every record from here has cases:null and deaths:null. Not because the
+   numbers are always wrong, but because a headline's number cannot be checked
+   — "Cholera cases top 2,000" might be cumulative, weekly, national, regional,
+   suspected or confirmed, and nothing in the headline says which. So the wire
+   says an outbreak is being reported, the severity comes from the disease
+   floor, and the globe shows "no count". The Rwanda Marburg record that read
+   202,466 cases is exactly the failure this rule forecloses.
+
+   RULE 3 — CORROBORATION
+   Two independent domains must report the same disease in the same country
+   before anything is published. One exception: a single tier-1 source — a
+   health ministry, WHO, a CDC — is enough on its own, because it is the
+   primary source rather than a report of one.
+
+   RULE 4 — IT NEVER OVERRIDES A COUNTING SOURCE
+   The wire runs last and goes through addIfNew(), so if PAHO or WHO has
+   already reported that disease in that country, the wire record is dropped.
+   It only ever fills silence.
+
+   RULE 5 — NO SPECULATION
+   Headlines carrying rumour, fear, denial or hypothetical language are
+   dropped, along with anything that does not name both a disease and exactly
+   one country.
+
+   Everything here is tunable in WIRE below, and every decision it makes is
+   reported in _notes so you can see what it accepted and what it threw away.
+   --------------------------------------------------------------------------- */
+
+const WIRE = {
+  enabled: true,
+  windowDays: 7,          // how far back to search
+  maxRecords: 250,        // per query, GDELT's own ceiling
+  minSources: 2,          // independent domains needed to publish
+  maxPerRun: 40,          // records this adapter may add in one run
+  queries: 4              // GDELT requests per run
+};
+
+const GDELT_API = 'https://api.gdeltproject.org/api/v2/doc/doc';
+
+/* ---- the allowlist -------------------------------------------------------
+   Tier 1: primary public health authorities. Their own site reporting their
+           own outbreak is a primary source, so one is enough.
+   Tier 2: international wires and peer-reviewed or specialist health press.
+   Tier 3: established national outlets, mostly in the regions the other
+           adapters reach least.
+   Adding a domain is a judgement about whether you would cite it in the
+   paper. If you would not, leave it out. */
+
+const WIRE_TIER1 = [
+  'who.int', 'cdc.gov', 'ecdc.europa.eu', 'paho.org', 'africacdc.org',
+  'reliefweb.int', 'unicef.org', 'un.org', 'europa.eu', 'gavi.org',
+  'nicd.ac.za', 'gov.uk', 'canada.ca', 'health.gov.au', 'mohfw.gov.in'
+];
+const WIRE_TIER2 = [
+  'reuters.com', 'apnews.com', 'afp.com', 'bbc.com', 'bbc.co.uk',
+  'aljazeera.com', 'theguardian.com', 'ft.com', 'economist.com',
+  'nature.com', 'thelancet.com', 'nejm.org', 'bmj.com', 'science.org',
+  'cidrap.umn.edu', 'promedmail.org', 'statnews.com', 'healthpolicy-watch.news',
+  'devex.com', 'gavi.org', 'msf.org', 'redcross.org', 'ifrc.org'
+];
+const WIRE_TIER3 = [
+  'nation.africa', 'standardmedia.co.ke', 'thecitizen.co.tz', 'monitor.co.ug',
+  'premiumtimesng.com', 'punchng.com', 'vanguardngr.com', 'graphic.com.gh',
+  'ewn.co.za', 'news24.com', 'mg.co.za', 'dailymaverick.co.za',
+  'thehindu.com', 'indianexpress.com', 'thedailystar.net', 'dawn.com',
+  'scmp.com', 'straitstimes.com', 'bangkokpost.com', 'jakartapost.com',
+  'nst.com.my', 'inquirer.net', 'rappler.com', 'vnexpress.net',
+  'folha.uol.com.br', 'globo.com', 'eltiempo.com', 'clarin.com',
+  'jpost.com', 'arabnews.com', 'thenationalnews.com', 'dailysabah.com',
+  'kyivindependent.com', 'themoscowtimes.com', 'japantimes.co.jp',
+  'koreaherald.com', 'taipeitimes.com', 'focustaiwan.tw', 'rnz.co.nz',
+  'abc.net.au', 'stuff.co.nz', 'fijitimes.com.fj'
+];
+
+function wireTier(domain){
+  const d = String(domain || '').toLowerCase().replace(/^www\./, '');
+  const on = list => list.some(x => d === x || d.endsWith('.' + x));
+  if(on(WIRE_TIER1)) return 1;
+  // any government or intergovernmental domain counts as primary
+  if(/(^|\.)gov(\.|$)/.test(d) || d.endsWith('.int') || d.endsWith('.go.ke')
+     || d.endsWith('.gouv.fr') || d.endsWith('.gob.mx')) return 1;
+  if(on(WIRE_TIER2)) return 2;
+  if(on(WIRE_TIER3)) return 3;
+  return 0;                                   // not on the list: discarded
+}
+
+/* Headlines that are about a possibility, a denial or a rumour rather than a
+   reported outbreak. */
+/* Built from parts rather than written as one literal, because the obvious
+   literal is subtly wrong: /\b(conspirac|alleged)\b/ never matches, since the
+   trailing boundary falls inside "conspiracy" and "allegedly". Each pattern
+   below carries its own suffix wildcard.
+
+   "may" is matched only as an auxiliary verb — a bare \bmay\b would throw away
+   every headline dated in May. */
+const WIRE_SPECULATIVE = new RegExp([
+  'rumou?rs?', 'conspirac\\w*', 'hoax(?:es)?', 'myths?', 'fears?', 'feared',
+  'panic', 'scares?', 'alleged\\w*', 'unverified', 'unconfirmed', 'speculat\\w*',
+  'could', 'might', 'would', 'may\\s+(?:be|have|become|spread|reach)',
+  'possible', 'possibly', 'den(?:y|ies|ied|ial)', 'debunk\\w*',
+  'false\\s+claims?', 'no\\s+cases', 'not\\s+an\\s+outbreak', 'free\\s+of',
+  'ruled\\s+out', 'not\\s+confirmed'
+].map(p => '\\b' + p + '\\b').join('|'), 'i');
+
+function gdeltQuery(diseases){
+  // GDELT understands quoted phrases and OR groups
+  const terms = diseases.map(d => `"${d}"`).join(' OR ');
+  return `(outbreak OR cases OR epidemic OR "cases reported") AND (${terms})`;
+}
+
+async function gdeltSearch(query){
+  const url = `${GDELT_API}?query=${encodeURIComponent(query)}`
+            + `&mode=ArtList&maxrecords=${WIRE.maxRecords}&format=json`
+            + `&timespan=${WIRE.windowDays * 24}h&sort=DateDesc`;
+  const r = await fetch(url, { headers:{ accept:'application/json', 'user-agent':UA } });
+  if(!r.ok) throw new Error('HTTP ' + r.status);
+
+  // GDELT answers some errors with an HTML page and a 200, so check the body
+  const body = await r.text();
+  if(!body.trim().startsWith('{')) throw new Error('non-JSON response (GDELT error page)');
+  const j = JSON.parse(body);
+  return Array.isArray(j.articles) ? j.articles : [];
+}
+
+/* "20260914T121500Z" -> "2026-09-14" */
+function gdeltDate(s){
+  const m = String(s || '').match(/^(\d{4})(\d{2})(\d{2})/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+async function fetchWire(){
+  if(!WIRE.enabled) return { countries:{}, disabled:true };
+
+  /* Split the disease list across a few queries so no single query gets too
+     long for GDELT to parse. */
+  const groups = [];
+  const size = Math.ceil(DISEASE_WORDS.length / WIRE.queries);
+  for(let i = 0; i < DISEASE_WORDS.length; i += size) groups.push(DISEASE_WORDS.slice(i, i + size));
+
+  const articles = [];
+  const failures = [];
+  for(const group of groups.slice(0, WIRE.queries)){
+    try{
+      articles.push(...await gdeltSearch(gdeltQuery(group)));
+    }catch(err){
+      failures.push(err.message);
+    }
+  }
+  if(!articles.length){
+    throw new Error('no articles returned' + (failures.length ? ' (' + failures[0] + ')' : ''));
+  }
+
+  /* The queries overlap — an article about cholera and measles comes back in
+     two of them — so deduplicate by URL before counting anything. Otherwise
+     the rejection statistics in _notes read several times too high. */
+  const seenUrls = new Set();
+  const unique = articles.filter(a => {
+    const u = String(a.url || '');
+    if(!u || seenUrls.has(u)) return false;
+    seenUrls.add(u);
+    return true;
+  });
+
+  /* Sort what came back into (country, disease) buckets, discarding as we go
+     and counting why. */
+  const buckets = new Map();
+  const rejected = { domain:0, speculative:0, noDisease:0, noCountry:0, manyCountries:0 };
+
+  for(const a of unique){
+    const domain = String(a.domain || '').toLowerCase();
+    const tier = wireTier(domain);
+    if(!tier){ rejected.domain++; continue; }
+
+    const title = String(a.title || '');
+    if(WIRE_SPECULATIVE.test(title)){ rejected.speculative++; continue; }
+
+    const disease = diseaseFromText(title);
+    if(!disease){ rejected.noDisease++; continue; }
+
+    const isos = scanForCountries(title);
+    if(isos.length === 0){ rejected.noCountry++; continue; }
+    if(isos.length > 1){ rejected.manyCountries++; continue; }
+
+    const key = isos[0] + '|' + disease;
+    const bucket = buckets.get(key) || { iso:isos[0], disease, domains:new Map(), best:null, newest:null };
+    if(!bucket.domains.has(domain)) bucket.domains.set(domain, tier);
+
+    const seen = gdeltDate(a.seendate);
+    if(!bucket.newest || (seen && seen > bucket.newest)) bucket.newest = seen;
+    if(!bucket.best || tier < bucket.best.tier){
+      bucket.best = { tier, url:a.url, domain, title };
+    }
+    buckets.set(key, bucket);
+  }
+
+  /* Publish what clears corroboration. */
+  const countries = {};
+  const published = [];
+  let thin = 0;
+
+  const ranked = [...buckets.values()].sort((a, b) => b.domains.size - a.domains.size);
+  for(const b of ranked){
+    if(published.length >= WIRE.maxPerRun) break;
+
+    const tiers = [...b.domains.values()];
+    const hasPrimary = tiers.includes(1);
+    if(b.domains.size < WIRE.minSources && !hasPrimary){ thin++; continue; }
+
+    const outlets = [...b.domains.keys()];
+    const entry = {
+      name: b.disease,
+      cases: null,                 // rule 2: the wire never publishes a number
+      deaths: null,
+      cfr: null,
+      per100k: null,
+      growth7d: null,
+      severity: severityFor(b.disease, null, null),
+      asOf: b.newest,
+      source: `Press reports · ${outlets.length} source${outlets.length === 1 ? '' : 's'} `
+            + `(${outlets.slice(0, 3).join(', ')}${outlets.length > 3 ? ', …' : ''}) `
+            + `— reported, not counted`,
+      url: b.best?.url || 'https://www.gdeltproject.org/',
+      provisional: true
+    };
+    if(addIfNew(countries, b.iso, entry, 'low')){
+      published.push(`${b.iso} ${b.disease} (${outlets.length})`);
+    }
+  }
+
+  return {
+    countries,
+    read: unique.length,
+    fetched: articles.length,
+    buckets: buckets.size,
+    published: published.length,
+    thin,
+    rejected,
+    examples: published.slice(0, 6)
+  };
+}
+
+/* ---------------------------------------------------------------------------
    4z. SANITY CHECK ON THE NUMBERS
 
    Bulletins are prose, and prose parsers pick up the wrong number sometimes.
@@ -2439,6 +2924,26 @@ export default async function handler(req, res){
     notes.push('EMRO sitreps fetch failed: ' + err.message);
   }
 
+  try{
+    const afro = await fetchAFRO();
+    let added = 0;
+    for(const [iso, rec] of Object.entries(afro.countries)){
+      for(const d of rec.diseases) if(addIfNew(countries, iso, d, rec.conf)) added++;
+    }
+    if(afro.published){
+      notes.push(`WHO AFRO bulletin: week ${afro.week ?? '?'} ending ${afro.asOf} `
+        + `(${afro.ageDays}d old, dated via ${afro.dateVia}), read ${afro.parsed} events `
+        + `across ${afro.matched} countries, added ${added} — ${afro.url}`);
+    } else {
+      notes.push(`WHO AFRO bulletin: HIDDEN — newest bulletin ends ${afro.asOf}, `
+        + `${afro.ageDays} days old, past the ${AFRO_MAX_AGE_DAYS}-day limit. `
+        + `It parsed ${afro.parsed} events; nothing was published.`);
+    }
+  }catch(err){
+    notes.push('WHO AFRO bulletin failed: ' + err.message
+      + ' | test it yourself: https://www.afro.who.int/outbreaks-and-emergencies-updates');
+  }
+
   /* The advisory sources run last on purpose. addIfNew() drops anything a
      counting source has already reported for that country, so these two only
      ever fill gaps — they cannot overwrite a figure that came with a number. */
@@ -2475,6 +2980,30 @@ export default async function handler(req, res){
   }catch(err){
     notes.push('ReliefWeb fetch failed: ' + err.message
       + ' | test it yourself: https://api.reliefweb.int/v1/reports?appname=test&limit=2');
+  }
+
+  /* The press wire runs after everything else, so corroborated coverage only
+     ever fills a silence no counting source could. */
+  try{
+    const wire = await fetchWire();
+    if(wire.disabled){
+      notes.push('Press wire: disabled (WIRE.enabled = false)');
+    } else {
+      let added = 0;
+      for(const [iso, rec] of Object.entries(wire.countries)){
+        for(const d of rec.diseases) if(addIfNew(countries, iso, d, 'low')) added++;
+      }
+      const rej = wire.rejected;
+      notes.push(`Press wire: read ${wire.read} articles, ${wire.buckets} country-disease `
+        + `pairs, published ${added} (${wire.thin} dropped for having only one source). `
+        + `Discarded: ${rej.domain} off-allowlist, ${rej.speculative} speculative, `
+        + `${rej.noDisease} no disease named, ${rej.noCountry + rej.manyCountries} no single country. `
+        + `No case counts are taken from press reporting.`);
+      if(wire.examples.length) notes.push('Press wire published: ' + wire.examples.join(' | '));
+    }
+  }catch(err){
+    notes.push('Press wire failed: ' + err.message
+      + ' | test it yourself: https://api.gdeltproject.org/api/v2/doc/doc?query=cholera%20outbreak&mode=ArtList&format=json&timespan=48h');
   }
 
   // merge the baseline in without overwriting anything live
