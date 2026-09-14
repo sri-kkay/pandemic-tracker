@@ -57,7 +57,7 @@ const ISO = {
   'mali':'MLI','mauritania':'MRT','mauritius':'MUS','morocco':'MAR','mozambique':'MOZ',
   'namibia':'NAM','niger':'NER','nigeria':'NGA','rwanda':'RWA','senegal':'SEN',
   'seychelles':'SYC','reunion':'REU','la reunion':'REU','mayotte':'MYT','sierra leone':'SLE','somalia':'SOM','south africa':'ZAF',
-  'south sudan':'SSD','sudan':'SDN','togo':'TGO','tunisia':'TUN','uganda':'UGA',
+  'south sudan':'SDS','sudan':'SDN','togo':'TGO','tunisia':'TUN','uganda':'UGA',
   'united republic of tanzania':'TZA','tanzania':'TZA','zambia':'ZMB','zimbabwe':'ZWE',
 
   // Asia
@@ -1105,14 +1105,25 @@ async function fetchCDCStates(){
   }
   if(!rows) throw new Error('all query attempts failed (' + lastErr + ')');
 
-  const sample = rows[0];
+  /* Socrata omits null fields ROW BY ROW in its JSON output, so the first row
+     is not a reliable list of the dataset's columns — a row that happens to
+     have no activity level simply has no activity_level key. Reading columns
+     off rows[0] is what made this adapter fail with "Saw: week_end, geography,
+     label, buildnumber". Union the keys across a chunk of rows instead. */
+  const SCAN = Math.min(rows.length, 400);
+  const sample = {};
+  for(const row of rows.slice(0, SCAN)){
+    for(const k of Object.keys(row)) if(!(k in sample)) sample[k] = row[k];
+  }
+
   const col = {
-    date:  findColumn(sample, ['week_end_date','week_ending_date','weekendingdate','weekend','date']),
+    date:  findColumn(sample, ['week_end_date','week_ending_date','weekendingdate','week_end','weekend','date']),
     place: findColumn(sample, ['geography','jurisdiction','state','location','geo_name','statename']),
     level: findColumn(sample, ['activity_level','ari_activity_level','level','activity','category'])
   };
   if(!col.place || !col.level){
-    throw new Error('columns not recognised. Saw: ' + Object.keys(sample).slice(0,20).join(', '));
+    throw new Error('columns not recognised across ' + SCAN + ' rows. Saw: '
+      + Object.keys(sample).slice(0, 30).join(', '));
   }
 
   // Most recent week present in the response
@@ -1476,17 +1487,77 @@ async function fetchCDCNotices(){
    update, and the globe's confidence badge should say so.
    --------------------------------------------------------------------------- */
 
-const RELIEFWEB_API = 'https://api.reliefweb.int/v1/reports';
+/* v1 was decommissioned in Q1 2026 and answers 410 Gone. v2 is the current
+   version and is documented as fully compatible with v1, so only the path
+   changed here.
+
+   ONE THING TO DO: since 1 November 2025 ReliefWeb asks for a pre-approved
+   appname. Register yours at https://apidoc.reliefweb.int/ and put it below.
+   Unregistered names still work today, but that is not a promise they made. */
+const RELIEFWEB_API = 'https://api.reliefweb.int/v2/reports';
 const RELIEFWEB_APP = 'pandemic-tracker-student-project';
 const RELIEFWEB_DAYS = 45;      // how far back to look
 
 /* ReliefWeb speaks ISO 3166 alpha-3. Natural Earth's 110m basemap resolves a
    few territories under its own codes, and the globe matches on those, so
    translate before writing anything into the payload. */
-const ISO3_FIX = { XKX:'KOS', PSE:'PSX', ESH:'SAH', ROM:'ROU', TMP:'TLS', ZAR:'COD' };
+/* ---------------------------------------------------------------------------
+   THE CODE THE GLOBE MATCHES ON IS NOT ALWAYS THE ISO 3166 CODE
+
+   The globe resolves a country by Natural Earth's ADM0_A3. For eight countries
+   that differs from the ISO 3166 alpha-3 code every data feed publishes, and a
+   record written under the ISO code lands on a polygon that does not exist. It
+   does not error, it does not warn — the country just stays hatched while its
+   data sits in the payload.
+
+   That is exactly what was happening to South Sudan (cholera, influenza and
+   polio all present under SSD), Kosovo (XKX) and Palestine (PSE). FluNet and
+   ReliefWeb publish raw ISO 3166, so every adapter needs this, not just the
+   one it was first written for.
+   --------------------------------------------------------------------------- */
+const ISO3_FIX = {
+  SSD:'SDS',     // South Sudan
+  XKX:'KOS',     // Kosovo
+  PSE:'PSX',     // Palestine
+  ESH:'SAH',     // Western Sahara
+  ROM:'ROU',     // Romania, old code
+  TMP:'TLS',     // Timor-Leste, old code
+  ZAR:'COD'      // DR Congo, old code
+};
 function fixISO(code){
   const up = String(code || '').toUpperCase();
   return ISO3_FIX[up] || up;
+}
+
+/** Rewrite any record filed under a code the basemap cannot draw. Runs over
+ *  the finished payload, so it covers every adapter including future ones. */
+function normaliseCodes(countries, admin1, notes){
+  const moved = [];
+
+  for(const [iso, rec] of Object.entries(countries)){
+    const fixed = fixISO(iso);
+    if(fixed === iso) continue;
+    if(countries[fixed]){
+      for(const d of rec.diseases) addIfNew(countries, fixed, d, rec.conf);
+    } else {
+      countries[fixed] = rec;
+    }
+    delete countries[iso];
+    moved.push(`${iso}->${fixed}`);
+  }
+
+  for(const [key, rec] of Object.entries(admin1)){
+    const [iso, ...rest] = key.split(':');
+    const fixed = fixISO(iso);
+    if(fixed === iso) continue;
+    const newKey = [fixed, ...rest].join(':');
+    if(!admin1[newKey]) admin1[newKey] = rec;
+    delete admin1[key];
+  }
+
+  if(moved.length){
+    notes.push(`Basemap codes corrected so these countries can paint: ${moved.join(', ')}`);
+  }
 }
 
 async function fetchReliefWeb(){
@@ -1519,6 +1590,10 @@ async function fetchReliefWeb(){
   for(let i = 0; i < attempts.length; i++){
     try{
       const r = await fetch(attempts[i], { headers:{ accept:'application/json', 'user-agent':UA } });
+      if(r.status === 410){
+        lastErr = 'HTTP 410 — this API version has been retired, check https://apidoc.reliefweb.int/';
+        continue;
+      }
       if(!r.ok){ lastErr = 'HTTP ' + r.status; continue; }
       const j = await r.json();
       if(Array.isArray(j?.data) && j.data.length){ data = j.data; usedAttempt = i + 1; break; }
@@ -2122,6 +2197,69 @@ async function fetchEMROCountryReports(){
 }
 
 /* ---------------------------------------------------------------------------
+   4z. SANITY CHECK ON THE NUMBERS
+
+   Bulletins are prose, and prose parsers pick up the wrong number sometimes.
+   The Rwanda Marburg record was a live example: 202,466 cases against 15
+   deaths, from a Disease Outbreak News item about an outbreak that had 66
+   cases. The case count was some other figure in the same paragraph — contacts
+   traced, samples tested, people vaccinated.
+
+   A number that wrong is worse than no number: it topped the globe, drove the
+   world severity index and made the drawer look authoritative about nonsense.
+
+   The check is the case fatality rate. Marburg kills between a quarter and
+   most of the people it infects; a Marburg record with a CFR of 0.007% is not
+   a small outbreak, it is a parse error. So for the diseases whose lethality
+   is well established, a case count that implies a CFR ten times below the
+   floor is dropped. The deaths stay — those come from a plainer sentence and
+   are usually right — and the record says what happened.
+   --------------------------------------------------------------------------- */
+
+const MIN_PLAUSIBLE_CFR = [
+  [/marburg/i,                    10],
+  [/\bebola\b|sudan virus|bundibugyo/i, 10],
+  [/nipah/i,                      20],
+  [/\brabies\b/i,                 50],
+  [/mers|middle east respiratory/i, 10],
+  [/crimean|\bcchf\b/i,            5],
+  [/\bplague\b/i,                  2],
+  [/h5n1|h5n5|h7n9|avian influenza/i, 10],
+  [/lassa/i,                       0.5]
+];
+
+function sanityCheck(countries, admin1, notes){
+  const dropped = [];
+
+  const check = (where, rec) => {
+    for(const d of rec.diseases || []){
+      if(d.cases == null || d.deaths == null || d.cases <= 0) continue;
+      const rule = MIN_PLAUSIBLE_CFR.find(([re]) => re.test(d.name));
+      if(!rule) continue;
+
+      const cfr = (d.deaths / d.cases) * 100;
+      if(cfr >= rule[1] / 10) continue;          // an order of magnitude of slack
+
+      dropped.push(`${where} ${d.name}: ${d.cases.toLocaleString()} cases vs `
+        + `${d.deaths} deaths is a CFR of ${cfr.toFixed(3)}%, far below what this `
+        + `disease does — case count dropped, deaths kept`);
+      d.cases = null;
+      d.cfr = null;
+      d.per100k = null;
+      d.provisional = true;
+      d.severity = severityFor(d.name, null, d.deaths);
+      d.source = (d.source || '') + ' — case count withheld as implausible';
+    }
+  };
+
+  for(const [iso, rec] of Object.entries(countries)) check(iso, rec);
+  for(const [key, rec] of Object.entries(admin1))   check(key, rec);
+
+  for(const line of dropped) notes.push('Sanity check — ' + line);
+  if(!dropped.length) notes.push('Sanity check: every case-to-death ratio looked plausible');
+}
+
+/* ---------------------------------------------------------------------------
    5. BASELINE
    Things the scraper cannot get yet, so the map is never empty. Delete a line
    here as soon as a real source starts supplying it.
@@ -2343,6 +2481,12 @@ export default async function handler(req, res){
   for(const [iso, rec] of Object.entries(BASELINE)){
     if(!countries[iso]) countries[iso] = rec;
   }
+
+  /* Two passes over the finished payload, before anything is published:
+     one so every record sits on a code the globe can draw, one so no record
+     carries a number the disease could not possibly produce. */
+  normaliseCodes(countries, admin1, notes);
+  sanityCheck(countries, admin1, notes);
 
   /* -------------------------------------------------------------------------
      7. GUIDANCE — the bottom-right drawer
