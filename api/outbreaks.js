@@ -319,7 +319,7 @@ async function fetchWHO(){
   const url = 'https://www.who.int/api/news/diseaseoutbreaknews'
             + '?$orderby=PublicationDateAndTime%20desc&$top=80';
 
-  const r = await fetch(url, {
+  const r = await net(url, {
     headers: {
       'accept': 'application/json',
       // Identify yourself. It is polite and it stops you looking like a bot.
@@ -464,7 +464,8 @@ function fluSeverity(rate){
 }
 
 async function fetchERVISS(){
-  const r = await fetch(ERVISS_URL);
+  if(outOfTime(2500)) throw budgetSkip(2500);
+  const r = await net(ERVISS_URL);
   if(!r.ok) throw new Error('ERVISS returned ' + r.status);
   const rows = parseCSV(await r.text());
 
@@ -616,6 +617,7 @@ function fluPositivitySeverity(pct){
 }
 
 async function fetchFluNet(){
+  if(outOfTime(3000)) throw budgetSkip(3000);
   const year = new Date().getUTCFullYear();
 
   // Try progressively looser queries. xMart supports OData, but not every
@@ -630,7 +632,7 @@ async function fetchFluNet(){
   let rows = null, usedUrl = null, lastErr = null;
   for(const url of attempts){
     try{
-      const r = await fetch(url, {
+      const r = await net(url, {
         headers:{ 'user-agent':'PandemicTracker/1.0 (student project; contact: YOUR_EMAIL_HERE)' }
       });
       if(!r.ok){ lastErr = 'HTTP ' + r.status; continue; }
@@ -761,12 +763,13 @@ function stripTags(html){
 const ARBO_PAIR = /([A-Z][A-Za-z\u00C0-\u017F.'\-]*(?:\s+[A-Za-z\u00C0-\u017F.'\-]+){0,3})\s+with\s+([\d][\d,\.]*)\s+cases/g;
 
 async function fetchPAHO(){
+  if(outOfTime(2500)) throw budgetSkip(2500);
   const thisYear = new Date().getUTCFullYear();
   let html = null, year = null;
 
   for(const y of [thisYear, thisYear - 1]){
     try{
-      const r = await fetch(`https://ais.paho.org/ha_viz/Arbo/Arbo_Bulletin_${y}.asp?env=pri`, {
+      const r = await net(`https://ais.paho.org/ha_viz/Arbo/Arbo_Bulletin_${y}.asp?env=pri`, {
         headers:{ 'user-agent':'PandemicTracker/1.0 (student project; contact: YOUR_EMAIL_HERE)' }
       });
       if(!r.ok) continue;
@@ -932,13 +935,14 @@ const toInt = s => {
 };
 
 async function fetchAfricaCDC(){
+  if(outOfTime(3000)) throw budgetSkip(3000);
   const headers = { 'user-agent':'PandemicTracker/1.0 (student project; contact: YOUR_EMAIL_HERE)' };
   let posts = [];
   let via = 'wp-json';
 
   // ---- Preferred path: the WordPress JSON API
   try{
-    const r = await fetch(
+    const r = await net(
       `${ACDC_BASE}/wp-json/wp/v2/disease-outbreak?per_page=20&orderby=date&order=desc`,
       { headers });
     if(r.ok){
@@ -957,7 +961,7 @@ async function fetchAfricaCDC(){
   // ---- Fallback: scrape the listing page, then each brief
   if(!posts.length){
     via = 'html';
-    const r = await fetch(`${ACDC_BASE}/disease-outbreak/`, { headers });
+    const r = await net(`${ACDC_BASE}/disease-outbreak/`, { headers });
     if(!r.ok) throw new Error('listing page returned ' + r.status);
     const html = await r.text();
 
@@ -971,7 +975,7 @@ async function fetchAfricaCDC(){
 
     for(const link of links){
       try{
-        const p = await fetch(link, { headers });
+        const p = await net(link, { headers });
         if(!p.ok) continue;
         const pageHtml = await p.text();
         const titleMatch = pageHtml.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
@@ -997,6 +1001,7 @@ async function fetchAfricaCDC(){
   posts.sort((a,b) => (b.date || '').localeCompare(a.date || ''));
 
   for(const post of posts){
+    if(outOfTime(1200)) break;        // keep what has been parsed, drop the rest
     const disease = diseaseFromText(post.title, post.body.slice(0, 1200));
     if(!disease) continue;
 
@@ -1097,6 +1102,7 @@ const CDC_SKIP = new Set([
 ]);
 
 async function fetchCDCStates(){
+  if(outOfTime(2000)) throw budgetSkip(2000);
   const attempts = [
     `${CDC_STATE_URL}?$limit=800&$order=week_end_date%20DESC`,
     `${CDC_STATE_URL}?$limit=800&$order=week_ending_date%20DESC`,
@@ -1106,7 +1112,7 @@ async function fetchCDCStates(){
   let rows = null, lastErr = null;
   for(const url of attempts){
     try{
-      const r = await fetch(url, {
+      const r = await net(url, {
         headers:{ 'user-agent':'PandemicTracker/1.0 (student project; contact: YOUR_EMAIL_HERE)' }
       });
       if(!r.ok){ lastErr = 'HTTP ' + r.status; continue; }
@@ -1282,9 +1288,10 @@ function bestProvinceSentence(body){
 }
 
 async function fetchNICD(){
+  if(outOfTime(2000)) throw budgetSkip(2000);
   const headers = { 'user-agent':'PandemicTracker/1.0 (student project; contact: YOUR_EMAIL_HERE)' };
 
-  const r = await fetch(
+  const r = await net(
     `https://www.nicd.ac.za/wp-json/wp/v2/posts?search=measles%20rubella%20situation%20report`
     + `&per_page=10&orderby=date&order=desc`, { headers });
   if(!r.ok) throw new Error('NICD returned ' + r.status);
@@ -1439,7 +1446,7 @@ function parseNoticeTitle(title){
    List" heading. Reading that page is one extra request per global notice, and
    there are rarely more than a handful. */
 async function cdcNoticeCountries(url){
-  const r = await fetch(url, { headers:{ 'user-agent':UA } });
+  const r = await net(url, { headers:{ 'user-agent':UA } });
   if(!r.ok) throw new Error('HTTP ' + r.status);
   const html = await r.text();
   const text = html
@@ -1454,7 +1461,8 @@ async function cdcNoticeCountries(url){
 }
 
 async function fetchCDCNotices(){
-  const r = await fetch(CDC_NOTICES_RSS, {
+  if(outOfTime(4000)) throw budgetSkip(4000);
+  const r = await net(CDC_NOTICES_RSS, {
     headers:{ 'accept':'application/rss+xml, application/xml, text/xml', 'user-agent':UA }
   });
   if(!r.ok) throw new Error('CDC returned ' + r.status);
@@ -1645,7 +1653,7 @@ async function fetchReliefWeb(){
   let data = null, usedAttempt = 0, lastErr = null;
   for(let i = 0; i < attempts.length; i++){
     try{
-      const r = await fetch(attempts[i], { headers:{ accept:'application/json', 'user-agent':UA } });
+      const r = await net(attempts[i], { headers:{ accept:'application/json', 'user-agent':UA } });
       if(r.status === 410){
         lastErr = 'HTTP 410 — this API version has been retired, check https://apidoc.reliefweb.int/';
         continue;
@@ -1849,11 +1857,12 @@ function emroDisease(raw){
 }
 
 async function fetchEMRO(){
+  if(outOfTime(5000)) throw budgetSkip(5000);
   let best = null;
 
   for(const url of EMRO_TABLES){
     try{
-      const r = await fetch(url, { headers:{ accept:'text/html', 'user-agent':UA } });
+      const r = await net(url, { headers:{ accept:'text/html', 'user-agent':UA } });
       if(!r.ok) continue;
       const html = await r.text();
       const plain = cellText(html.replace(/<script[\s\S]*?<\/script>/gi, ' '));
@@ -2043,7 +2052,7 @@ async function pdfText(url){
      The bytes live at /content on the same bitstream. */
   const direct = url.replace(/\/bitstreams?\/([^/]+)\/download\b/i, '/bitstreams/$1/content');
 
-  const r = await fetch(direct, { headers:{ 'user-agent':UA, accept:'application/pdf,*/*' } });
+  const r = await net(direct, { headers:{ 'user-agent':UA, accept:'application/pdf,*/*' } }, 15000);
   if(!r.ok) throw new Error('PDF HTTP ' + r.status);
 
   const len = +(r.headers.get('content-length') || 0);
@@ -2194,6 +2203,7 @@ function parseSitrep(text){
 /* --- the adapter --------------------------------------------------------- */
 
 async function fetchEMROCountryReports(){
+  if(outOfTime(7000)) throw budgetSkip(7000);
   const countries = {};
   const reports = [];
   const problems = [];
@@ -2204,7 +2214,7 @@ async function fetchEMROCountryReports(){
       /* find the newest PDF on the index page. The filenames have changed
          format at least four times, so rank by the week and year in the link
          text or the filename rather than trusting any one pattern. */
-      const r = await fetch(country.index, { headers:{ accept:'text/html', 'user-agent':UA } });
+      const r = await net(country.index, { headers:{ accept:'text/html', 'user-agent':UA } });
       if(!r.ok) throw new Error('index HTTP ' + r.status);
       const html = await r.text();
 
@@ -2427,6 +2437,7 @@ function bulletinPeriod(text){
 }
 
 async function fetchAFRO(){
+  if(outOfTime(9000)) throw budgetSkip(9000);
   /* find the newest bulletin PDF. The links sit on an index page, sometimes
      directly and sometimes behind a publication page, and the files live on
      either afro.who.int or iris.who.int. */
@@ -2435,7 +2446,7 @@ async function fetchAFRO(){
 
   for(const index of AFRO_INDEXES){
     try{
-      const r = await fetch(index, { headers:{ accept:'text/html', 'user-agent':UA } });
+      const r = await net(index, { headers:{ accept:'text/html', 'user-agent':UA } });
       if(!r.ok) continue;
       const html = await r.text();
 
@@ -2468,7 +2479,7 @@ async function fetchAFRO(){
     follow.sort((a, b) => b.rank - a.rank);
     for(const page of follow.slice(0, AFRO_FOLLOW_LIMIT)){
       try{
-        const r = await fetch(page.href, { headers:{ accept:'text/html', 'user-agent':UA } });
+        const r = await net(page.href, { headers:{ accept:'text/html', 'user-agent':UA } });
         if(!r.ok) continue;
         const html = await r.text();
         for(const m of html.matchAll(/href=["']([^"']+(?:\.pdf|bitstreams?\/[^"']+\/(?:download|content)))["']/gi)){
@@ -2487,7 +2498,8 @@ async function fetchAFRO(){
   /* Work down the candidates: the newest link is sometimes a landing page or a
      bot-checked mirror, and the week before it is a perfectly good bulletin. */
   let newest = null, text = null, period = null, tried = [];
-  for(const candidate of pdfs.slice(0, 8)){
+  for(const candidate of pdfs.slice(0, 3)){
+    if(outOfTime(6000)){ tried.push('ran out of time before trying the rest'); break; }
     try{
       const body = await pdfText(candidate.href);
       if(!looksLikeBulletin(body)){
@@ -2606,8 +2618,8 @@ const WIRE = {
   minSources: 2,          // independent domains needed to publish
   maxPerRun: 40,          // records this adapter may add in one run
   queries: 2,             // GDELT requests per run — see the rate limit note
-  spacingMs: 1500,        // wait between them
-  retryMs: 4000           // wait once more after a 429 before giving up
+  spacingMs: 800,         // wait between them
+  retryMs: 2000           // wait once more after a 429 before giving up
 };
 
 /* GDELT rate-limits by IP, and on Vercel that IP is shared with every other
@@ -2711,7 +2723,7 @@ async function gdeltSearch(query, allowRetry = true){
 
   let r;
   try{
-    r = await fetch(url, { headers:{ accept:'application/json', 'user-agent':UA } });
+    r = await net(url, { headers:{ accept:'application/json', 'user-agent':UA } });
   }catch(err){
     // DNS or TCP failure, not an HTTP status — worth one retry, then move on
     if(!allowRetry) throw new Error('network error (' + err.message + ')');
@@ -2746,7 +2758,7 @@ function gdeltDate(s){
 async function googleNewsSearch(query){
   const url = `${GOOGLE_NEWS_RSS}?q=${encodeURIComponent(query + ' when:' + WIRE.windowDays + 'd')}`
             + '&hl=en-US&gl=US&ceid=US:en';
-  const r = await fetch(url, { headers:{ accept:'application/rss+xml, application/xml', 'user-agent':UA } });
+  const r = await net(url, { headers:{ accept:'application/rss+xml, application/xml', 'user-agent':UA } });
   if(!r.ok) throw new Error('HTTP ' + r.status);
   const xml = await r.text();
 
@@ -2774,6 +2786,7 @@ const WIRE_PROVIDERS = [
 ];
 
 async function fetchWire(){
+  if(outOfTime(6000)) throw budgetSkip(6000);
   if(!WIRE.enabled) return { countries:{}, disabled:true };
 
   /* Split the disease list across a few queries so no single query gets too
@@ -2788,7 +2801,9 @@ async function fetchWire(){
   let usedProvider = null;
 
   for(const provider of WIRE_PROVIDERS){
+    if(outOfTime(4000)) break;            // no time to try a second provider
     for(let i = 0; i < plan.length; i++){
+      if(outOfTime(2500)) break;
       if(i) await sleep(WIRE.spacingMs);
       try{
         articles.push(...await provider.search(gdeltQuery(plan[i])));
@@ -2971,7 +2986,76 @@ const BASELINE = {};   // NICD now supplies South Africa directly (§4g)
    6. THE HANDLER — this is what runs when the globe calls /api/outbreaks
    --------------------------------------------------------------------------- */
 
+/* ---------------------------------------------------------------------------
+   THE CLOCK
+
+   Sources were added one at a time, each reasonable on its own, and together
+   they outgrew the function's time limit. A timed-out function does not return
+   partial data — it returns nothing, and the site falls back to the snapshot
+   baked into index.html. Fifteen working sources are worth nothing if the
+   sixteenth runs long.
+
+   So the pipeline now works to a budget. Fast sources run first; slow ones —
+   anything that downloads a PDF or waits out a rate limit — run only if there
+   is time left. Whatever gets skipped says so in _notes, and the response goes
+   out with everything that did finish.
+
+   BUDGET_MS must stay comfortably under the maxDuration set in vercel.json.
+   --------------------------------------------------------------------------- */
+
+const BUDGET_MS = 20000;
+let DEADLINE = 0;
+
+function timeLeft(){ return DEADLINE ? DEADLINE - Date.now() : Infinity; }
+function outOfTime(need = 0){ return timeLeft() < need; }
+function budgetSkip(need){
+  return new Error('skipped — about ' + Math.round(need/1000) + 's needed, only '
+    + Math.max(0, Math.round(timeLeft()/1000)) + 's left in the request budget');
+}
+
+/* ---------------------------------------------------------------------------
+   net() — every outbound request goes through here
+
+   Adapters used to call fetch() directly, which meant a single slow host could
+   spend the whole request budget and the function would time out — returning
+   nothing at all, and dropping the site onto the snapshot baked into
+   index.html. Fifteen working sources are worth nothing if the sixteenth hangs.
+
+   net() enforces the clock on every call:
+     · past the deadline it fails instantly, so a loop over twenty briefs stops
+       costing time the moment the budget is gone;
+     · otherwise the call is capped at whatever time is left, by an abort signal
+       and by a race, because a connection that opens and then goes quiet does
+       not always abort promptly.
+
+   It is a plain function rather than a wrapper around globalThis.fetch, so it
+   cannot be switched off by anything else reassigning fetch.
+   --------------------------------------------------------------------------- */
+async function net(url, options = {}, maxMs = 12000){
+  if(outOfTime(0)) throw new Error('request budget exhausted before this call');
+
+  const cap = Math.max(700, Math.min(maxMs, timeLeft() - 400));
+  const ctrl = new AbortController();
+  let timer;
+  const ceiling = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      ctrl.abort();
+      reject(new Error('no response within ' + Math.round(cap / 1000) + 's'));
+    }, cap);
+  });
+
+  try{
+    return await Promise.race([
+      globalThis.fetch(url, { ...options, signal: options.signal || ctrl.signal }),
+      ceiling
+    ]);
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
 export default async function handler(req, res){
+  DEADLINE = Date.now() + BUDGET_MS;
   // Tell Vercel's CDN to cache this. WHO gets hit ~4 times a day total.
   res.setHeader(
     'Cache-Control',
