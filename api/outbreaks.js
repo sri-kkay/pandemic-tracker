@@ -2050,7 +2050,14 @@ async function pdfText(url){
   /* IRIS runs DSpace, whose /download path serves the JavaScript viewer, not
      the file — which is why the bulletin came back as "<!DOCTYPE html>… DSpace".
      The bytes live at /content on the same bitstream. */
-  const direct = url.replace(/\/bitstreams?\/([^/]+)\/download\b/i, '/bitstreams/$1/content');
+  /* IRIS runs DSpace 7, which is two applications on one hostname: an Angular
+     front end at /bitstreams/<uuid>/download, and the REST API at
+     /server/api/core/bitstreams/<uuid>/content. Only the second serves bytes.
+     My first attempt rewrote /download to /content but stayed on the front end,
+     so it kept getting the same "<!DOCTYPE html>… DSpace" page. */
+  const direct = url.replace(
+    /^(https?:\/\/[^/]+)\/bitstreams?\/([0-9a-f-]{36})\/(?:download|content)\b/i,
+    '$1/server/api/core/bitstreams/$2/content');
 
   const r = await net(direct, { headers:{ 'user-agent':UA, accept:'application/pdf,*/*' } }, 15000);
   if(!r.ok) throw new Error('PDF HTTP ' + r.status);
@@ -2436,6 +2443,73 @@ function bulletinPeriod(text){
   return { week: +m[1], end: new Date(Date.UTC(+m[5], mi, +m[3])) };
 }
 
+/* ---------------------------------------------------------------------------
+   Finding the bulletin
+
+   Scraping afro.who.int for links has not worked well: the index carries
+   monthly EPR reports and country sitreps alongside the bulletin, link text
+   disagrees with what the link actually points at, and some of the files are
+   hosted on IRIS behind a JavaScript front end.
+
+   IRIS is WHO's document repository, and it runs DSpace 7 with an open REST
+   API. Asking it for the newest "Weekly Bulletin on Outbreaks" by publication
+   date is both simpler and more reliable than reading a web page — it returns
+   the item, its date and its file, as JSON.
+
+   The afro.who.int scrape stays as a fallback for when IRIS is unreachable.
+   --------------------------------------------------------------------------- */
+const IRIS_SEARCH = 'https://iris.who.int/server/api/discover/search/objects';
+
+async function afroFromIris(){
+  const url = IRIS_SEARCH
+    + '?query=' + encodeURIComponent('"Weekly Bulletin on Outbreaks and Other Emergencies"')
+    + '&dsoType=item&size=8&sort=dc.date.issued,DESC';
+
+  const r = await net(url, { headers:{ accept:'application/json', 'user-agent':UA } }, 8000);
+  if(!r.ok) throw new Error('IRIS search HTTP ' + r.status);
+  const j = await r.json();
+
+  const objects = j?._embedded?.searchResult?._embedded?.objects || [];
+  const out = [];
+
+  for(const o of objects.slice(0, 4)){
+    if(outOfTime(5000)) break;
+    const item = o?._embedded?.indexableObject;
+    if(!item?.uuid) continue;
+
+    const title = String(item.name || '');
+    const issued = item.metadata?.['dc.date.issued']?.[0]?.value || '';
+    const wk = title.match(/week[\s:#-]*(\d{1,2})/i);
+    const yr = (title.match(/(20\d{2})/) || issued.match(/(20\d{2})/) || [])[1];
+
+    /* the file lives under the item's bundles — DSpace nests them two levels
+       deep, and each bundle's bitstreams are their own paginated collection */
+    let bundles;
+    try{
+      const br = await net(`https://iris.who.int/server/api/core/items/${item.uuid}/bundles`,
+        { headers:{ accept:'application/json', 'user-agent':UA } }, 8000);
+      if(!br.ok) continue;
+      bundles = await br.json();
+    }catch(err){ continue; }
+
+    for(const bundle of bundles?._embedded?.bundles || []){
+      for(const bit of bundle?._embedded?.bitstreams?._embedded?.bitstreams || []){
+        const name = String(bit.name || '');
+        if(!/\.pdf$/i.test(name)) continue;
+        out.push({
+          href: bit?._links?.content?.href
+             || `https://iris.who.int/server/api/core/bitstreams/${bit.uuid}/content`,
+          label: title || name,
+          week: wk ? +wk[1] : null,
+          year: yr ? +yr : null,
+          rank: 2e6 + (yr ? +yr : 0) * 100 + (wk ? +wk[1] : 0)   // IRIS hits sort first
+        });
+      }
+    }
+  }
+  return out;
+}
+
 async function fetchAFRO(){
   if(outOfTime(9000)) throw budgetSkip(9000);
   /* find the newest bulletin PDF. The links sit on an index page, sometimes
@@ -2443,8 +2517,19 @@ async function fetchAFRO(){
      either afro.who.int or iris.who.int. */
   const pdfs = [];
   const follow = [];
+  const discovery = [];
+
+  /* IRIS first — it answers with structured data instead of a web page. */
+  try{
+    const fromIris = await afroFromIris();
+    pdfs.push(...fromIris);
+    discovery.push(`IRIS returned ${fromIris.length} candidate file(s)`);
+  }catch(err){
+    discovery.push('IRIS search failed (' + err.message + ')');
+  }
 
   for(const index of AFRO_INDEXES){
+    if(pdfs.length) break;                 // IRIS already gave us candidates
     try{
       const r = await net(index, { headers:{ accept:'text/html', 'user-agent':UA } });
       if(!r.ok) continue;
@@ -2515,7 +2600,10 @@ async function fetchAFRO(){
       tried.push(`${decodeURIComponent(candidate.href.split('/').pop())}: ${err.message}`);
     }
   }
-  if(!newest) throw new Error('no candidate was the weekly bulletin — ' + tried.join(' | '));
+  if(!newest){
+    throw new Error('no candidate was the weekly bulletin. ' + discovery.join('; ')
+      + '. Tried: ' + tried.join(' | '));
+  }
 
   /* date it: the bulletin's own header carries the reporting period */
   /* The document's own period first, then a date range in the header, then the
@@ -3003,7 +3091,10 @@ const BASELINE = {};   // NICD now supplies South Africa directly (§4g)
    BUDGET_MS must stay comfortably under the maxDuration set in vercel.json.
    --------------------------------------------------------------------------- */
 
-const BUDGET_MS = 20000;
+/* vercel.json gives this function 60 seconds. Twenty was too tight once the
+   PDF sources were added — the press wire, which runs last, never got a turn.
+   Forty leaves twenty seconds of headroom against the platform limit. */
+const BUDGET_MS = 40000;
 let DEADLINE = 0;
 
 function timeLeft(){ return DEADLINE ? DEADLINE - Date.now() : Infinity; }
