@@ -1178,97 +1178,80 @@ let NODATA = '#39424F';   // overwritten by setTheme()
 function tierOf(s){ return s==null ? {name:'no data',hex:NODATA} : TIERS.find(t=>s<=t.max); }
 function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
 
-/* ── ROLLING A PLACE UP TO ITS PARENT ─────────────────────────────────────
-   How somewhere is coloured when you are looking at it from further out.
-
-   The old rule was 60% worst-case, which meant one bad province painted a
-   whole country and one bad country painted a whole continent. The zoomed-in
-   and zoomed-out views of the same place disagreed, and the zoomed-out one
-   was the wrong one.
-
-   The rule now: the colour shows what most of the population is living with.
-   A hotspot pulls that figure toward itself in proportion to how many people
-   it actually covers, so one state out of fifty barely moves it while a third
-   of the country moves it a long way.
-
-   The floor is the safety valve. A tracker that paints a country "contained"
-   while one of its provinces is in a critical outbreak is worse than useless,
-   so an aggregate never sits more than one tier below its worst component.
-   That is what keeps a localised Ebola cluster visible without letting a
-   localised flu season repaint a continent. */
-
-function dangerFloor(worst){
-  if(worst == null) return 0;
-  if(worst >= 80) return 60;     // a critical child keeps the parent at severe
-  if(worst >= 60) return 40;     // a severe child keeps the parent at high
-  return 0;                      // below that, the majority decides on its own
-}
-
+/* Roll child entities up to a parent. 60% worst-case, 40% population-weighted —
+   so one critical province lifts the country without a big calm neighbour
+   burying it. */
 function rollup(children){
   const scored = children.filter(c => c.severity != null);
   if(!scored.length) return null;
+  const worst = Math.max(...scored.map(c=>c.severity));
+  let wsum=0, psum=0;
+  scored.forEach(c=>{ const p=c.pop||1; wsum += c.severity*p; psum += p; });
+  return Math.round(0.6*worst + 0.4*(wsum/psum));
+}
 
-  // what the typical person in this place is living with
+/* ── A COUNTRY SEEN FROM WORLD ZOOM ───────────────────────────────────────
+   Zoom in and you see states, each coloured by its own reading. Zoom out and
+   the country replaces them with one colour, and that colour has to be honest
+   about what it is standing in for. Forty-nine green states and one orange one
+   is a green country with an orange state in it.
+
+   So the country takes the colour of its population, not of its worst region.
+   A hotspot pulls that figure toward itself in proportion to how many people
+   it covers: one state in fifty barely moves it, a third of the country moves
+   it a long way.
+
+   The floor is the safety valve. A tracker that paints a country calm while a
+   province inside it is in a critical outbreak is worse than no tracker, so
+   the country never sits more than one tier below a genuinely dangerous
+   component. That keeps a localised Ebola cluster visible without letting a
+   localised flu season repaint the map.
+
+   Nothing here touches the states themselves. Zoomed in, every region keeps
+   the exact colour and number it had before. */
+
+function dangerFloor(worst){
+  if(worst == null) return 0;
+  if(worst >= 80)   return 60;   // critical component, country stays at severe
+  if(worst >= 60)   return 40;   // severe component, country stays at high
+  return 0;                      // below that the majority decides on its own
+}
+
+function majorityOf(kids){
+  const scored = kids.filter(k => k.severity != null);
+  if(!scored.length) return null;
+
   let wsum = 0, psum = 0;
-  for(const c of scored){
-    const pop = Math.max(1, c.pop || 1);
-    wsum += c.severity * pop;
+  for(const k of scored){
+    const pop = Math.max(1, k.pop || 1);
+    wsum += k.severity * pop;
     psum += pop;
   }
   const typical = wsum / psum;
-
-  const worst = Math.max(...scored.map(c => c.severity));
+  const worst   = Math.max(...scored.map(k => k.severity));
   if(worst <= typical) return Math.round(clamp(typical, 0, 100));
 
-  // how much of the population actually lives where it is worst
   const hotCut = worst - 10;
   let hotPop = 0;
-  for(const c of scored) if(c.severity >= hotCut) hotPop += Math.max(1, c.pop || 1);
-  const pull = Math.min(1, (hotPop / psum) * 2.5);
+  for(const k of scored) if(k.severity >= hotCut) hotPop += Math.max(1, k.pop || 1);
+  const pull = Math.min(1, (hotPop / psum) * 2);   // half the population or more and the hotspot decides outright
 
   const sev = typical + (worst - typical) * pull;
   return Math.round(clamp(Math.max(sev, dangerFloor(worst)), 0, 100));
 }
 
-/* ── RECONCILING A COUNTRY WITH THE REGIONS INSIDE IT ──────────────────────
-   A country carries two kinds of record: national ones (WHO bulletins, FluNet)
-   and sub-national ones (US state activity levels, South African provinces).
-   They were never compared, so the globe could show fifty green states and an
-   orange country at the same time.
-
-   The regional picture is the more granular of the two, so it leads. A
-   national record can still lift the country, because it may describe
-   something the regional feed never carries, but only as far as its own reach
-   justifies. A record covering an entire country and one describing a cluster
-   in a single city arrive in exactly the same shape, and the only thing that
-   separates them is the case rate: ten per 100k reads as nationwide, a
-   hundredth of that reads as a local event wearing a national label. */
-
-function nationalReach(rec){
-  const per100k = maxPer100k(rec);
-  if(per100k == null) return 1;            // no rate to judge by, assume national
-  return clamp(Math.log10(per100k + 1) / Math.log10(11), 0.1, 1);
-}
-
-/* What the globe is actually showing for a place, so every panel agrees with
-   the colour. Falls back to scoring the record directly for anything that was
-   never given an entity. */
-function shownSeverity(key, rec){
-  const e = key ? S.entities.get(key) : null;
-  if(e) return e.sev;
-  return rec ? entitySeverity(rec) : null;
-}
-
 function countrySeverity(rec, kids){
   const own = entitySeverity(rec);
-  if(!kids || !kids.length) return own;    // no sub-national picture to reconcile
+  if(!kids || !kids.length) return own;    // no sub-national picture, nothing to reconcile
 
-  const regional = rollup(kids);
-  if(regional == null) return own;
-  if(own == null) return regional;
+  const majority = majorityOf(kids);
+  if(majority == null) return own;
 
-  const lifted = regional + (own - regional) * nationalReach(rec);
-  return Math.round(clamp(Math.max(lifted, dangerFloor(own)), 0, 100));
+  /* A national record can describe something the regional feed does not carry
+     at all, so a dangerous one still shows through the floor. One that is
+     merely elevated does not override what the regions are actually
+     reporting. It stays in the dossier and the report list either way. */
+  return Math.max(majority, dangerFloor(own));
 }
 
 /* ── 2. SEED DATA ─────────────────────────────────────────────────────────
@@ -1581,9 +1564,9 @@ function buildEntities(){
   S.entities.clear();
   const derived = derivePer100k();
   if(derived) console.log('Derived per-100k for', derived, 'records from Natural Earth populations');
-  /* Regions first, so a country can be reconciled against what is inside it.
-     Without this ordering the country colour is computed from its national
-     records alone and can contradict the states you see when you zoom in. */
+  /* Regions are built first so a country can be scored against what is inside
+     it. Their own severity is unchanged: entitySeverity(rec), exactly as
+     before, which is why the zoomed-in view looks identical. */
   const regionsOf = new Map();
   for(const [k,rec] of Object.entries(SEED.admin1)){
     const sev = entitySeverity(rec);
@@ -1601,7 +1584,7 @@ function buildEntities(){
      own. It still deserves a colour rather than a hatch. */
   for(const [iso, kids] of regionsOf){
     if(S.entities.has(iso)) continue;
-    S.entities.set(iso, {key:iso, level:'country', sev:rollup(kids), rec:{diseases:[]}});
+    S.entities.set(iso, {key:iso, level:'country', sev:majorityOf(kids), rec:{diseases:[]}});
   }
   // cities
   for(const [k,rec] of Object.entries(SEED.cities)){
@@ -2333,25 +2316,29 @@ function onHover(e){
     const f = findCountry(ll.lat, ll.lon);
     const iso = f ? isoOf(f) : null;
 
-    /* The tooltip reads its number out of S.entities, the same place the globe
-       reads the colour from. Scoring the record again here would contradict
-       the fill under the cursor, because a country is reconciled against the
-       regions inside it and a bare record is not. */
-    let key = null;
+    /* When the label falls back to the national record it is describing the
+       country fill under the cursor, so it reads that fill's own number out of
+       S.entities rather than scoring the record again. Otherwise the tooltip
+       and the colour it is sitting on could disagree. */
+    const nationalSev = () => {
+      const e = S.entities.get(iso);
+      return e ? e.sev : null;
+    };
 
     // city marker under the cursor?
     if(lod === 'city'){
       const c = findCityNear(ll.lat, ll.lon, 1.6);
       if(c){
         name = c.name;
-        rec  = c.rec; key = c.rec ? c.iso + ':' + c.name : null;
-        if(!rec && c.adm1){
-          rec = SEED.admin1[c.iso + ':' + c.adm1] || null;
-          key = rec ? c.iso + ':' + c.adm1 : null;
-        }
+        rec  = c.rec;
+        if(!rec && c.adm1) rec = SEED.admin1[c.iso + ':' + c.adm1] || null;
         if(rec) note = c.rec ? null : t('tip.figuresFor', {region:c.adm1});
-        if(!rec && iso){ rec = SEED.countries[iso]; key = iso; note = t('tip.national'); }
-        sev = shownSeverity(key, rec);
+        if(!rec && iso){
+          rec = SEED.countries[iso]; note = t('tip.national');
+          sev = nationalSev();
+        } else {
+          sev = rec ? entitySeverity(rec) : null;
+        }
       }
     }
 
@@ -2361,16 +2348,19 @@ function onHover(e){
       if(a){
         name = a.name;
         rec  = SEED.admin1[iso + ':' + a.name] || null;
-        key  = rec ? iso + ':' + a.name : null;
-        if(!rec){ rec = SEED.countries[iso]; key = iso; note = rec ? t('tip.national') : null; }
-        sev = shownSeverity(key, rec);
+        if(!rec){
+          rec = SEED.countries[iso]; note = rec ? t('tip.national') : null;
+          sev = nationalSev();
+        } else {
+          sev = entitySeverity(rec);     // the region's own reading, unchanged
+        }
       }
     }
 
     // country
     if(!name && f){
-      name = nameOf(f); rec = SEED.countries[iso]; key = iso;
-      sev = shownSeverity(key, rec);
+      name = nameOf(f); rec = SEED.countries[iso];
+      sev = nationalSev();
     }
 
     if(!name){ hideTip(); return; }
