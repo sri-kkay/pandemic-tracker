@@ -543,10 +543,13 @@ a:hover{color:var(--ink)}
 /* ══════════════════════════════════════════════════════════════════════════
    GLOBAL EPIDEMIC & PANDEMIC TRACKER
    ──────────────────────────────────────────────────────────────────────────
-   Interface layer only. All epidemiological values below are SEED data —
-   replace them wholesale with your pipeline's output. See INTEGRATION-GUIDE.md.
+   The whole interface in one file: the severity scale, the globe, the drawer,
+   the report log and seven languages.
 
-   The single integration point is loadData() at the bottom of this file.
+   Live figures come from /api/outbreaks, which polls WHO, ECDC, PAHO, Africa
+   CDC, US CDC, NICD and the rest. The values in SEED below are the bundled
+   fallback, shown only if that call fails, so the map still opens with
+   something true on it rather than an empty sphere.
    ══════════════════════════════════════════════════════════════════════════ */
 
 /* ── 0a. LANGUAGE ─────────────────────────────────────────────────────────
@@ -631,7 +634,7 @@ en:{
  'ask.intro':'Searches WHO and CDC for this disease. The answers come from them, not from this site.',
  'ask.placeholder':'e.g. is it safe to travel to {place}?','ask.who':'Search WHO','ask.cdc':'Search CDC',
  'age.today':'today','age.yesterday':'yesterday','age.days':'{n}d ago','age.weeks':'{n}w ago','age.months':'{n}mo ago','age.nodate':'no date',
- 'tip.none':'No reported activity','tip.national':'national figures','tip.figuresFor':'figures for {region}',
+ 'tip.none':'No reported activity','tip.noLocal':'No data for this area specifically','tip.zoomOut':'Zoom out for national figures','tip.figuresFor':'figures for {region}',
  'zoom.countries':'countries','zoom.states':'states','zoom.cities':'cities',
  'zoom.nextStates':'scroll in for states','zoom.nextCities':'scroll in for cities',
  'zoom.loading':'loading','zoom.statesMissing':'state data missing','crumb.world':'World',
@@ -692,7 +695,7 @@ es:{
  'ask.intro':'Busca esta enfermedad en la OMS y los CDC. Las respuestas vienen de ellos, no de este sitio.',
  'ask.placeholder':'p. ej.: ¿es seguro viajar a {place}?','ask.who':'Buscar en la OMS','ask.cdc':'Buscar en los CDC',
  'age.today':'hoy','age.yesterday':'ayer','age.days':'hace {n} d','age.weeks':'hace {n} sem','age.months':'hace {n} meses','age.nodate':'sin fecha',
- 'tip.none':'Sin actividad notificada','tip.national':'cifras nacionales','tip.figuresFor':'cifras de {region}',
+ 'tip.none':'Sin actividad notificada','tip.noLocal':'Sin datos propios de esta zona','tip.zoomOut':'Aleja para ver las cifras nacionales','tip.figuresFor':'cifras de {region}',
  'zoom.countries':'países','zoom.states':'estados','zoom.cities':'ciudades',
  'zoom.nextStates':'acércate para ver estados','zoom.nextCities':'acércate para ver ciudades',
  'zoom.loading':'cargando','zoom.statesMissing':'faltan datos de estados','crumb.world':'Mundo',
@@ -753,7 +756,7 @@ fr:{
  'ask.intro':'Recherche cette maladie sur les sites de l’OMS et des CDC. Les réponses viennent d’eux, pas de ce site.',
  'ask.placeholder':'ex. : est-il sûr de voyager à {place} ?','ask.who':'Chercher à l’OMS','ask.cdc':'Chercher aux CDC',
  'age.today':'aujourd’hui','age.yesterday':'hier','age.days':'il y a {n} j','age.weeks':'il y a {n} sem','age.months':'il y a {n} mois','age.nodate':'sans date',
- 'tip.none':'Aucune activité signalée','tip.national':'chiffres nationaux','tip.figuresFor':'chiffres pour {region}',
+ 'tip.none':'Aucune activité signalée','tip.noLocal':'Aucune donnée propre à cette zone','tip.zoomOut':'Dézoomez pour les chiffres nationaux','tip.figuresFor':'chiffres pour {region}',
  'zoom.countries':'pays','zoom.states':'régions','zoom.cities':'villes',
  'zoom.nextStates':'zoome pour les régions','zoom.nextCities':'zoome pour les villes',
  'zoom.loading':'chargement','zoom.statesMissing':'données régionales manquantes','crumb.world':'Monde',
@@ -814,7 +817,7 @@ pt:{
  'ask.intro':'Busca esta doença na OMS e no CDC. As respostas vêm deles, não deste site.',
  'ask.placeholder':'ex.: é seguro viajar para {place}?','ask.who':'Buscar na OMS','ask.cdc':'Buscar no CDC',
  'age.today':'hoje','age.yesterday':'ontem','age.days':'há {n} d','age.weeks':'há {n} sem','age.months':'há {n} meses','age.nodate':'sem data',
- 'tip.none':'Sem atividade notificada','tip.national':'números nacionais','tip.figuresFor':'números de {region}',
+ 'tip.none':'Sem atividade notificada','tip.noLocal':'Sem dados próprios desta área','tip.zoomOut':'Afaste para ver os números nacionais','tip.figuresFor':'números de {region}',
  'zoom.countries':'países','zoom.states':'estados','zoom.cities':'cidades',
  'zoom.nextStates':'aproxime para ver estados','zoom.nextCities':'aproxime para ver cidades',
  'zoom.loading':'carregando','zoom.statesMissing':'faltam dados estaduais','crumb.world':'Mundo',
@@ -875,7 +878,7 @@ zh:{
  'ask.intro':'在世卫组织和美国 CDC 网站上搜索这种疾病。答案来自它们，而不是本站。',
  'ask.placeholder':'例如：现在去{place}安全吗？','ask.who':'搜索世卫组织','ask.cdc':'搜索 CDC',
  'age.today':'今天','age.yesterday':'昨天','age.days':'{n} 天前','age.weeks':'{n} 周前','age.months':'{n} 个月前','age.nodate':'无日期',
- 'tip.none':'没有通报的疫情','tip.national':'全国数据','tip.figuresFor':'{region}的数据',
+ 'tip.none':'没有通报的疫情','tip.noLocal':'该地区没有单独的数据','tip.zoomOut':'缩小查看全国数据','tip.figuresFor':'{region}的数据',
  'zoom.countries':'国家','zoom.states':'省/州','zoom.cities':'城市',
  'zoom.nextStates':'继续放大查看省/州','zoom.nextCities':'继续放大查看城市',
  'zoom.loading':'加载中','zoom.statesMissing':'缺少省/州数据','crumb.world':'全球',
@@ -936,7 +939,7 @@ hi:{
  'ask.intro':'WHO और CDC पर इस बीमारी को खोजता है। जवाब उन्हीं से आते हैं, इस साइट से नहीं।',
  'ask.placeholder':'जैसे: क्या {place} की यात्रा सुरक्षित है?','ask.who':'WHO पर खोजें','ask.cdc':'CDC पर खोजें',
  'age.today':'आज','age.yesterday':'कल','age.days':'{n} दिन पहले','age.weeks':'{n} सप्ताह पहले','age.months':'{n} माह पहले','age.nodate':'तिथि नहीं',
- 'tip.none':'कोई रिपोर्ट नहीं','tip.national':'राष्ट्रीय आँकड़े','tip.figuresFor':'{region} के आँकड़े',
+ 'tip.none':'कोई रिपोर्ट नहीं','tip.noLocal':'इस क्षेत्र के अलग आँकड़े नहीं','tip.zoomOut':'राष्ट्रीय आँकड़ों के लिए ज़ूम आउट करें','tip.figuresFor':'{region} के आँकड़े',
  'zoom.countries':'देश','zoom.states':'राज्य','zoom.cities':'शहर',
  'zoom.nextStates':'राज्यों के लिए और ज़ूम करें','zoom.nextCities':'शहरों के लिए और ज़ूम करें',
  'zoom.loading':'लोड हो रहा है','zoom.statesMissing':'राज्य डेटा नहीं मिला','crumb.world':'विश्व',
@@ -997,7 +1000,7 @@ ar:{
  'ask.intro':'يبحث عن هذا المرض في منظمة الصحة العالمية ومراكز CDC. الإجابات منهما، لا من هذا الموقع.',
  'ask.placeholder':'مثال: هل السفر إلى {place} آمن؟','ask.who':'ابحث في منظمة الصحة','ask.cdc':'ابحث في CDC',
  'age.today':'اليوم','age.yesterday':'أمس','age.days':'قبل {n} يوم','age.weeks':'قبل {n} أسبوع','age.months':'قبل {n} شهر','age.nodate':'بلا تاريخ',
- 'tip.none':'لا نشاط مُبلَّغ عنه','tip.national':'أرقام وطنية','tip.figuresFor':'أرقام {region}',
+ 'tip.none':'لا نشاط مُبلَّغ عنه','tip.noLocal':'لا توجد بيانات خاصة بهذه المنطقة','tip.zoomOut':'صغّر العرض لرؤية الأرقام الوطنية','tip.figuresFor':'أرقام {region}',
  'zoom.countries':'الدول','zoom.states':'الولايات','zoom.cities':'المدن',
  'zoom.nextStates':'قرّب لعرض الولايات','zoom.nextCities':'قرّب لعرض المدن',
  'zoom.loading':'جارٍ التحميل','zoom.statesMissing':'بيانات الولايات مفقودة','crumb.world':'العالم',
@@ -1102,7 +1105,10 @@ function resolveTheme(){ return THEME_PREF === 'system' ? (mqDark.matches ? 'dar
 function setTheme(pref, repaint = true){
   THEME_PREF = pref;
   localStorage.setItem('pt.theme', pref);
-  const resolved = resolveTheme();
+  /* resolveTheme() can only return 'dark' or 'light' for a known preference,
+     but THEME_PREF is read out of localStorage, so a value written by an older
+     build would otherwise take PAL to undefined and kill the page on boot. */
+  const resolved = PALETTES[resolveTheme()] ? resolveTheme() : 'dark';
   document.documentElement.dataset.theme = resolved;
   PAL = PALETTES[resolved];
   TIERS.forEach((tier,i)=> tier.hex = PAL.tiers[i]);
@@ -1459,8 +1465,13 @@ const SEED = {
    feeds cannot be fetched this way — see the guide. */
 
 const GEO = {
-  countries:['https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson',
-             'https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_110m_admin_0_countries.geojson'],
+  /* Natural Earth 110m, trimmed to the six properties this file reads and
+     served from our own origin. It used to come straight off raw.github at
+     run time, which meant the globe drew nothing whenever GitHub rate-limited
+     us or was having a bad morning. The CDN copies stay as a fallback. */
+  countries:['data/countries.geojson',
+             'https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_110m_admin_0_countries.geojson',
+             'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson'],
   /* Bundled with the project. Natural Earth's worldwide admin-1 file is 38 MB,
      which is far too heavy for a browser, so it was simplified down to 1.7 MB
      (3,978 regions across 218 countries) and shipped in public/data/.
@@ -1562,8 +1573,7 @@ function derivePer100k(){
 
 function buildEntities(){
   S.entities.clear();
-  const derived = derivePer100k();
-  if(derived) console.log('Derived per-100k for', derived, 'records from Natural Earth populations');
+  derivePer100k();
   /* Regions are built first so a country can be scored against what is inside
      it. Their own severity is unchanged: entitySeverity(rec), exactly as
      before, which is why the zoomed-in view looks identical. */
@@ -1576,6 +1586,12 @@ function buildEntities(){
     if(!regionsOf.has(iso)) regionsOf.set(iso, []);
     regionsOf.get(iso).push({ severity: sev, pop: rec.pop || 1 });
   }
+  /* Which countries publish region by region at all. A state missing from a
+     country that does is a hole in the reporting and is drawn as one. A state
+     in a country that only ever reports nationally is not a hole, so it keeps
+     the country colour under it rather than being hatched out. */
+  S.reportsByRegion = new Set(regionsOf.keys());
+
   // countries
   for(const [iso,rec] of Object.entries(SEED.countries)){
     S.entities.set(iso, {key:iso, level:'country', sev:countrySeverity(rec, regionsOf.get(iso)), rec});
@@ -1713,14 +1729,30 @@ function paint(){
     }
   });
 
-  // ── state / province fills, wherever we actually have data for them.
-  // Boundaries are worldwide, but only regions with surveillance data get a
-  // fill. Everything else keeps the country colour beneath it.
+  /* ── state and province fills ───────────────────────────────────────────
+     Boundaries are worldwide, surveillance is not. Three cases, and the
+     difference between the last two is the whole point:
+
+       · the region reports        → its own colour, from its own figures
+       · the region is silent but
+         its siblings report       → hatched, because that is a hole in the
+                                     reporting and painting the country colour
+                                     there would invent a reading for it
+       · the whole country only
+         reports nationally        → left alone, so the country colour shows
+                                     through. Nothing is missing here, the
+                                     data simply is not collected this finely
+
+     Iowa is the case that matters: it is the one US state absent from the CDC
+     feed, so before this it wore whatever colour the national record gave the
+     country and looked like the only state in trouble. */
   if(S.lod !== 'world' && S.admin1){
     for(const [iso, regions] of Object.entries(S.admin1)){
+      const granular = S.reportsByRegion && S.reportsByRegion.has(iso);
       for(const [name, rings] of regions){
         const e = S.entities.get(iso + ':' + name);
-        if(!e || e.sev == null) continue;
+        const known = e && e.sev != null;
+        if(!known && !granular) continue;        // nationally reported, leave it
         tx.beginPath();
         for(const flat of rings){
           for(let i = 0; i + 1 < flat.length; i += 2){
@@ -1729,7 +1761,7 @@ function paint(){
           }
           tx.closePath();
         }
-        tx.fillStyle = fillFor(e.sev, maxPer100k(e.rec));
+        tx.fillStyle = known ? fillFor(e.sev, maxPer100k(e.rec)) : fillFor(null);
         tx.fill('evenodd');
       }
     }
@@ -2316,14 +2348,14 @@ function onHover(e){
     const f = findCountry(ll.lat, ll.lon);
     const iso = f ? isoOf(f) : null;
 
-    /* When the label falls back to the national record it is describing the
-       country fill under the cursor, so it reads that fill's own number out of
-       S.entities rather than scoring the record again. Otherwise the tooltip
-       and the colour it is sitting on could disagree. */
-    const nationalSev = () => {
-      const e = S.entities.get(iso);
-      return e ? e.sev : null;
-    };
+    /* A place shows its own figures or none at all. The national record used
+       to stand in whenever a state or a city had nothing of its own, which
+       read as though those cases had been counted there: hover Iowa and you
+       were told about 378 measles cases that were never Iowa's. Borrowed
+       numbers are worse than a blank, so now the only figures that appear
+       under a name are the ones reported for that name, and anything taken
+       from a larger area says whose it is. */
+    let noLocal = false;
 
     // city marker under the cursor?
     if(lod === 'city'){
@@ -2331,14 +2363,13 @@ function onHover(e){
       if(c){
         name = c.name;
         rec  = c.rec;
-        if(!rec && c.adm1) rec = SEED.admin1[c.iso + ':' + c.adm1] || null;
-        if(rec) note = c.rec ? null : t('tip.figuresFor', {region:c.adm1});
-        if(!rec && iso){
-          rec = SEED.countries[iso]; note = t('tip.national');
-          sev = nationalSev();
-        } else {
-          sev = rec ? entitySeverity(rec) : null;
+        // a city's own record, else its state's, clearly labelled as the state's
+        if(!rec && c.adm1){
+          rec = SEED.admin1[c.iso + ':' + c.adm1] || null;
+          if(rec) note = t('tip.figuresFor', {region:c.adm1});
         }
+        if(!rec){ noLocal = true; note = t('tip.zoomOut'); }
+        sev = rec ? entitySeverity(rec) : null;
       }
     }
 
@@ -2348,32 +2379,37 @@ function onHover(e){
       if(a){
         name = a.name;
         rec  = SEED.admin1[iso + ':' + a.name] || null;
-        if(!rec){
-          rec = SEED.countries[iso]; note = rec ? t('tip.national') : null;
-          sev = nationalSev();
-        } else {
-          sev = entitySeverity(rec);     // the region's own reading, unchanged
+        if(rec){
+          sev = entitySeverity(rec);         // its own reading, unchanged
+        }else{
+          noLocal = true; sev = null;
+          note = t('tip.zoomOut');
         }
       }
     }
 
-    // country
+    // country — here the national record IS this place's own record
     if(!name && f){
       name = nameOf(f); rec = SEED.countries[iso];
-      sev = nationalSev();
+      const ent = S.entities.get(iso);       // the number the fill was drawn from
+      sev = ent ? ent.sev : null;
     }
 
     if(!name){ hideTip(); return; }
-    showTip(e, name, rec, sev, note);
+    showTip(e, name, rec, sev, note, noLocal);
   });
 }
-function showTip(e, name, rec, sev, scopeNote){
+function showTip(e, name, rec, sev, scopeNote, noLocal){
   const tr = tierOf(sev);
   const dis = (rec && rec.diseases) ? rec.diseases : [];
+  /* "nothing reported here" and "nobody reports at this level" are different
+     claims and the tooltip has to keep them apart. The first says the place
+     was looked at and was clear. The second says it was never looked at. */
+  const blank = noLocal ? t('tip.noLocal') : t('tip.none');
   const rows = dis.slice(0,3).map(d=>{
     const n = d.cases!=null ? t('cases',{n:fmt(d.cases)}) : t('nocount');
     return `<div class="td"><span>${esc(d.name)}</span><span>${n} ${trendArrow(d.growth7d)}</span></div>`;
-  }).join('') || `<div class="td"><span>${t('tip.none')}</span><span>—</span></div>`;
+  }).join('') || `<div class="td"><span>${blank}</span><span>—</span></div>`;
   const fresh = freshness(freshestAsOf(dis));
   tip.innerHTML = `<div class="tn">${esc(name)}</div>${rows}
     ${scopeNote ? `<div class="td" style="color:var(--ink-dim);font-style:italic">${esc(scopeNote)}</div>` : ''}
@@ -3092,9 +3128,15 @@ function renderLabels(){
       list = S.cities
         .filter(x => x[3] <= maxTier)
         .slice(0, 400)
+        /* A city's own record if it has one, otherwise the region it sits in,
+           which is the same borrowing the tooltip names out loud. It stops at
+           the region: a national figure spread over every city in the country
+           would colour a thousand dots from one number. */
         .map(x => ({
           name:x[0], lat:x[2], lon:x[1], city:true,
-          sev: S.entities.get(x[4] + ':' + x[0])?.sev ?? null
+          sev: S.entities.get(x[4] + ':' + x[0])?.sev
+            ?? S.entities.get(x[4] + ':' + x[5])?.sev
+            ?? null
         }));
     }
   } else if(lod !== 'world' && S.countries){
@@ -3143,14 +3185,6 @@ function refresh(){
 function note(msg){
   const el = $('#stale'); el.textContent = msg; el.style.display='block';
   clearTimeout(el._t); el._t = setTimeout(()=>el.style.display='none', 7000);
-}
-
-/* The FAQ chips answer from the same guidance entry the tabs use, which works
-   offline and needs no key. Kept for a future assistant panel; point it at
-   your own /api/ask route — the browser cannot call an LLM provider directly
-   without exposing the key. */
-function askAssistant(kind, disease, place){
-  note(`Assistant not connected — wire askAssistant() to your /api/ask route. (${kind} · ${disease||'—'} · ${place})`);
 }
 
 /* ── 14. LOOP ─────────────────────────────────────────────────────────── */
@@ -3245,19 +3279,16 @@ function progress(p, key){
   }
 }
 
-/* ═══ THE INTEGRATION POINT ═══════════════════════════════════════════════
-   Replace the body of this function with a fetch of your pipeline's output.
-   Keep the shape identical to SEED and nothing else needs to change.
-   ═══════════════════════════════════════════════════════════════════════ */
+/* Live figures, or the bundled fallback when the collector is unreachable.
+   Object.assign rather than replacement, so a partial response still lands on
+   a complete object and nothing downstream has to test for gaps. */
 async function loadData(){
   try{
     const r = await fetch('/api/outbreaks', { cache:'no-store' });
     if(!r.ok) throw new Error(r.status);
-    const j = await r.json();
-    Object.assign(SEED, j);
-    console.log('Live data loaded:', Object.keys(j.countries||{}).length, 'countries');
+    Object.assign(SEED, await r.json());
   }catch(e){
-    console.warn('Scraper unreachable, using bundled snapshot:', e);
+    console.warn('Outbreak feed unreachable, showing the bundled snapshot:', e);
     note(t('note.offline'));
   }
   return SEED;
