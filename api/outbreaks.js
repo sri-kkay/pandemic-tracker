@@ -2359,7 +2359,16 @@ function parseAFRO(text){
   const out = new Map();        // "ISO|Disease" -> record
   const sentences = splitSentences(text);
 
-  const NUM = '([0-9][0-9,\\s]*|one|two|three|four|five|six|seven|eight|nine|ten)';
+  /* A number, and only one number. [0-9][0-9,\\s]* used to allow bare
+     whitespace anywhere inside, which quietly glued a year to the count
+     beside it: "as of week 35 of 2026 565 measles cases" parsed as 2,026,565
+     and Togo was published with a quarter of its population infected.
+
+     So a space only joins digits when it is doing the job of a thousands
+     separator, which means groups of exactly three, and the lookbehind stops
+     a match starting in the middle of the number before it. */
+  const NUM = '(?<![0-9])([0-9]{1,3}(?:[,\\u00A0\\u202F ][0-9]{3})+|[0-9]+'
+            + '|one|two|three|four|five|six|seven|eight|nine|ten)';
   const caseRe  = new RegExp(NUM + '\\s*(?:\\([0-9,]+\\)\\s*)?(?:new\\s+|confirmed\\s+|suspected\\s+|laboratory[- ]confirmed\\s+|cumulative\\s+)*[a-z ]{0,30}?cases?\\b', 'i');
   const deathRe = new RegExp(NUM + '\\s*(?:\\([0-9,]+\\)\\s*)?(?:new\\s+|confirmed\\s+|suspected\\s+|associated\\s+|community\\s+)*deaths?\\b', 'i');
   const cfrRe   = /CFR[:\s]*([0-9]+(?:\.[0-9]+)?)\s*%/i;
@@ -3024,7 +3033,13 @@ const MIN_PLAUSIBLE_CFR = [
   [/crimean|\bcchf\b/i,            5],
   [/\bplague\b/i,                  2],
   [/h5n1|h5n5|h7n9|avian influenza/i, 10],
-  [/lassa/i,                       0.5]
+  [/lassa/i,                       0.5],
+  /* Measles needs a third field: a floor on the case count. Its fatality rate
+     runs 1-3% where these bulletins are written, but a high-income country
+     reporting 300 cases and no deaths is perfectly ordinary and must not be
+     touched. Past ten thousand cases, a death toll near zero is not a good
+     outcome, it is a misread table. */
+  [/measles/i,                     1, 10000]
 ];
 
 function sanityCheck(countries, admin1, notes){
@@ -3035,6 +3050,7 @@ function sanityCheck(countries, admin1, notes){
       if(d.cases == null || d.deaths == null || d.cases <= 0) continue;
       const rule = MIN_PLAUSIBLE_CFR.find(([re]) => re.test(d.name));
       if(!rule) continue;
+      if(rule[2] && d.cases < rule[2]) continue;   // too small a sample to judge
 
       const cfr = (d.deaths / d.cases) * 100;
       if(cfr >= rule[1] / 10) continue;          // an order of magnitude of slack

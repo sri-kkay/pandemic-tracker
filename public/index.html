@@ -214,7 +214,11 @@ html[dir="rtl"] #langsel{padding:5px 8px 5px 22px;background-position:12px 12px,
   min-width:160px;max-width:250px;box-shadow:0 8px 24px rgba(0,0,0,.28);
 }
 #tip .tn{font-size:12.5px;font-weight:500;margin-bottom:6px;line-height:1.25}
-#tip .td{font-family:var(--font-num);font-size:10px;color:var(--ink-mute);display:flex;justify-content:space-between;gap:12px;padding:1px 0}
+#tip .td{font-family:var(--font-num);font-size:10px;color:var(--ink-mute);display:flex;justify-content:space-between;gap:12px;padding:1px 0;align-items:baseline}
+/* the count never wraps: some disease names run to three lines and the
+   figure was being squeezed into a second line of its own beside them */
+#tip .td > span:last-child{flex:none;white-space:nowrap}
+#tip .td > span:first-child{min-width:0}
 #tip .tt{
   display:flex;align-items:center;gap:6px;margin-top:7px;padding-top:7px;
   border-top:1px solid var(--hairline);font-family:var(--font-num);font-size:9px;
@@ -1611,18 +1615,49 @@ function maxPer100k(rec){
    Derived rates are marked `per100kDerived` so the panel can say where the
    number came from. A rate a source actually published is never overwritten.  */
 
+/* Case counts become rates here, which is also the only place on either side
+   of the app that holds a case count and a population at the same time. So it
+   is where a count that cannot possibly be true gets stopped.
+
+   The need is not hypothetical. A bulletin parser glued a year onto the number
+   beside it and published Togo with 2,026,565 measles cases, a quarter of the
+   country. That particular bug is fixed at source, but it reached the map
+   because nothing downstream was checking, and the next parser to mis-read a
+   table will not announce itself either.
+
+   Five per cent of a nation in one record is the line. The severity scale
+   already tops out at one per cent, no national bulletin these feeds carry has
+   ever come near five, and a figure past it is a parse error rather than an
+   epidemic. The count is dropped rather than the record: the disease is still
+   named, still carries its deaths and its source, and still colours the map
+   from the level its feed assigned. Only the impossible number goes. */
+const MAX_PLAUSIBLE_ATTACK_RATE = 0.05;
+
 function derivePer100k(){
   let made = 0;
+  S.implausible = [];
   for(const [iso, rec] of Object.entries(SEED.countries)){
     const pop = S.byISO.get(iso)?.pop;
     if(!pop || pop < 1000) continue;              // -99 and other junk values
     for(const d of rec.diseases || []){
-      if(d.per100k != null || d.cases == null) continue;
+      if(d.cases == null) continue;
+
+      if(d.cases / pop > MAX_PLAUSIBLE_ATTACK_RATE){
+        S.implausible.push(`${iso} ${d.name}: ${fmt(d.cases)} cases is `
+          + `${(d.cases / pop * 100).toFixed(1)}% of the population — count withheld`);
+        d.cases = null;
+        d.per100k = null;
+        d.countWithheld = true;
+        continue;
+      }
+
+      if(d.per100k != null) continue;
       d.per100k = +(d.cases / pop * 100000).toFixed(2);
       d.per100kDerived = true;
       made++;
     }
   }
+  if(S.implausible.length) console.warn('Implausible counts withheld:', S.implausible);
   return made;
 }
 
@@ -2456,12 +2491,28 @@ function onHover(e){
 }
 function showTip(e, name, rec, sev, scopeNote, noLocal){
   const tr = tierOf(sev);
-  const dis = rankedDiseases(rec);
+  /* Everything that carries a count, worst first, with no cap. Five is the
+     most any country holds, so the card stays a readable height.
+
+     A record with no number next to real figures is noise: it was a notice
+     that something happened, not a measurement of it, and it pushed the
+     outbreaks people actually care about off the bottom of the card. Those
+     drop out. The one exception is the record setting the colour, which stays
+     whether or not it was ever counted, because hiding it would leave the tier
+     at the bottom of the card with nothing on show to explain it. And when a
+     place has no counted figures at all, which is true of eight countries
+     here, the uncounted ones are all there is and the card shows them. */
+  const ranked  = rankedDiseases(rec);
+  const counted = ranked.filter(d => d.cases != null && d.cases > 0);
+  const lead    = ranked[0];
+  const dis = !counted.length ? ranked
+            : (lead && !counted.includes(lead) ? [lead, ...counted] : counted);
+
   /* "nothing reported here" and "nobody reports at this level" are different
      claims and the tooltip has to keep them apart. The first says the place
      was looked at and was clear. The second says it was never looked at. */
   const blank = noLocal ? t('tip.noLocal') : t('tip.none');
-  const rows = dis.slice(0,3).map(d=>{
+  const rows = dis.map(d=>{
     const n = d.cases!=null ? t('cases',{n:fmt(d.cases)}) : t('nocount');
     return `<div class="td"><span>${esc(d.name)}</span><span>${n} ${trendArrow(d.growth7d)}</span></div>`;
   }).join('') || `<div class="td"><span>${blank}</span><span>—</span></div>`;
