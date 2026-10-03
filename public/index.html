@@ -1204,6 +1204,35 @@ function measuredSeverity(d){
      measurement of one. After a year with nothing to confirm it, it fades,
      down to half its original weight over the following two years. Gently,
      because MERS in Saudi Arabia is real in a quiet year too. */
+/* ── A READING HAS A SHELF LIFE ───────────────────────────────────────────
+   Every figure on this map describes a moment, and the map claims to describe
+   now. Those are the same thing for a week or two and then they drift apart.
+
+   Guyana was the case that made it obvious: 8,079 dengue cases in a country of
+   783,000, which is one person in a hundred and scores a flat 100. The figure
+   is real. It is also PAHO's cumulative total through epidemiological week 7,
+   which was February, and PAHO has not published since. The map was painting
+   a country critical today on what was true seven months ago, which is the
+   same mistake as a stale bulletin outranking a live epidemic, wearing better
+   clothes.
+
+   So a figure decays toward silence rather than toward calm. It is not that
+   Guyana is fine now, it is that nobody has said. The record keeps its number
+   and its date in the report log and the dossier the whole time: only its
+   claim on the colour fades, and once that claim is worth nothing the record
+   stops voting and the map falls back on whatever else it has.
+
+   Two speeds, because the two kinds of record go stale differently. A counted
+   figure is a measurement, and ninety days is where this site's own freshness
+   scale already gives up on one. A notice carrying no numbers is a statement
+   that a disease is present somewhere, which stays true for longer, so it gets
+   a year before it starts to fade. */
+const SHELF = {
+  counted: { grace:  90, halfLife: 180 },
+  notice:  { grace: 365, halfLife: 365 }
+};
+const EXPIRED_BELOW = 3;     // under this a record is no longer saying anything
+
 function severityOf(d){
   const floor = d.severity != null ? clamp(d.severity, 0, 100) : null;
   const measured = d.routine ? null : measuredSeverity(d);
@@ -1213,12 +1242,15 @@ function severityOf(d){
         : Math.max(floor, measured);
   if(s == null) return null;                               // NO DATA — never 0
 
-  const bare = d.cases == null && d.deaths == null && d.per100k == null && d.cfr == null;
-  if(bare){
-    const age = ageDays(d.asOf);
-    if(age != null && age > 365) s = Math.round(s * clamp(1 - 0.5*(age-365)/730, 0.5, 1));
+  const age = ageDays(d.asOf);
+  if(age != null){
+    const bare = d.cases == null && d.deaths == null && d.per100k == null && d.cfr == null;
+    const { grace, halfLife } = bare ? SHELF.notice : SHELF.counted;
+    if(age > grace) s = s * Math.pow(0.5, (age - grace) / halfLife);
   }
-  return clamp(s, 0, 100);
+
+  s = Math.round(s);
+  return s < EXPIRED_BELOW ? null : clamp(s, 0, 100);
 }
 
 const TIERS = [
@@ -1294,18 +1326,39 @@ function majorityOf(kids){
   return Math.round(clamp(Math.max(sev, dangerFloor(worst)), 0, 100));
 }
 
-function countrySeverity(rec, kids){
+/* The regions decide the colour, but only about what they were looking at.
+   The fifty US state records are one measurement, acute respiratory illness,
+   and nothing else. Taking the majority of those and calling it the state of
+   the country quietly answers a question about measles with a survey about
+   coughs, and a national outbreak the states never counted disappears off the
+   map entirely.
+
+   So a national record whose disease appears nowhere in the regional reporting
+   counts at full weight. The regions have no opinion on it to outvote. */
+function countrySeverity(rec, kids, covered){
   const own = entitySeverity(rec);
   if(!kids || !kids.length) return own;    // no sub-national picture, nothing to reconcile
 
   const majority = majorityOf(kids);
   if(majority == null) return own;
 
-  /* A national record can describe something the regional feed does not carry
-     at all, so a dangerous one still shows through the floor. One that is
-     merely elevated does not override what the regions are actually
-     reporting. It stays in the dossier and the report list either way. */
-  return Math.max(majority, dangerFloor(own));
+  let unseen = null;
+  for(const d of (rec && rec.diseases) || []){
+    if(covered && covered.has(diseaseKey(d.name))) continue;
+    const s = diseaseSeverity(d);
+    if(s != null && (unseen == null || s > unseen)) unseen = s;
+  }
+
+  return Math.max(majority, unseen ?? 0, dangerFloor(own));
+}
+
+/* Feeds spell the same disease differently enough that an exact match would
+   miss, and a miss here is safe in only one direction: treating a covered
+   disease as uncovered shows more than it should, treating an uncovered one as
+   covered hides an outbreak. So the comparison is loose and errs toward
+   showing. */
+function diseaseKey(name){
+  return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
 /* ── 2. SEED DATA ─────────────────────────────────────────────────────────
@@ -1575,8 +1628,18 @@ function diseaseSeverity(dis){
    bottom. The country was painted by a figure the reader could not see.
    Worst first, everywhere, so the colour always has its reason on show. */
 function rankedDiseases(rec){
-  return (rec && rec.diseases ? rec.diseases.slice() : [])
-    .sort((a,b) => (diseaseSeverity(b) ?? -1) - (diseaseSeverity(a) ?? -1));
+  return (rec && rec.diseases ? rec.diseases.slice() : []).sort((a,b) => {
+    const bySev = (diseaseSeverity(b) ?? -1) - (diseaseSeverity(a) ?? -1);
+    if(bySev) return bySev;
+    /* Ties are common now that stale records decay onto the same numbers, and
+       they used to be broken by whatever order the collectors happened to
+       return. Brazil led with a yellow fever notice carrying no figures while
+       133,705 dengue cases sat below it, on an exact tie. A record with a
+       count outranks one without, and after that the fresher one wins. */
+    const counted = (b.cases != null ? 1 : 0) - (a.cases != null ? 1 : 0);
+    if(counted) return counted;
+    return (ageDays(a.asOf) ?? 1e9) - (ageDays(b.asOf) ?? 1e9);
+  });
 }
 
 function entitySeverity(rec){
@@ -1668,11 +1731,16 @@ function buildEntities(){
      it. Their own severity is unchanged: entitySeverity(rec), exactly as
      before, which is why the zoomed-in view looks identical. */
   const regionsOf = new Map();
+  const coveredOf = new Map();           // which diseases each country's regions report on
   for(const [k,rec] of Object.entries(SEED.admin1)){
     const sev = entitySeverity(rec);
     S.entities.set(k, {key:k, level:'admin1', sev, rec});
-    if(sev == null) continue;
     const iso = k.split(':')[0];
+    for(const d of rec.diseases || []){
+      if(!coveredOf.has(iso)) coveredOf.set(iso, new Set());
+      coveredOf.get(iso).add(diseaseKey(d.name));
+    }
+    if(sev == null) continue;
     if(!regionsOf.has(iso)) regionsOf.set(iso, []);
     regionsOf.get(iso).push({ severity: sev, pop: rec.pop || 1 });
   }
@@ -1684,7 +1752,8 @@ function buildEntities(){
 
   // countries
   for(const [iso,rec] of Object.entries(SEED.countries)){
-    S.entities.set(iso, {key:iso, level:'country', sev:countrySeverity(rec, regionsOf.get(iso)), rec});
+    S.entities.set(iso, {key:iso, level:'country',
+                         sev:countrySeverity(rec, regionsOf.get(iso), coveredOf.get(iso)), rec});
   }
   /* A country can be reported region by region with no national record of its
      own. It still deserves a colour rather than a hatch. */

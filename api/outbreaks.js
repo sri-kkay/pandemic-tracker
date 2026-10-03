@@ -204,17 +204,30 @@ function toNumber(s){
   return Number.isFinite(n) ? n : null;
 }
 
+/* The same trap the AFRO parser fell into, and these two are shared by several
+   adapters. [0-9][0-9\s,]* let a space sit anywhere inside a number, so a date
+   in front of the count got swallowed whole: Rwanda's Marburg outbreak, 66
+   cases in a bulletin dated 2024, came through as 202,466. The sanity check
+   caught that one on its fatality ratio and threw the count away, which is the
+   right end result from the wrong end of the pipe, and it threw away the true
+   figure with it.
+
+   A space joins digits only in groups of exactly three, the way a thousands
+   separator does, and the lookbehind stops a match beginning partway through
+   the number before it. */
+const COUNT = '(?<![0-9])([0-9]{1,3}(?:[,\u00a0\u2009\u202f ][0-9]{3})+|[0-9]+)';
+
 function findCases(text){
-  const m = text.match(
-    /([0-9][0-9\s,\u00a0\u2009]{0,12})\s+(?:confirmed\s+|suspected\s+|probable\s+|total\s+|reported\s+|new\s+)*cases/i
-  );
+  const m = text.match(new RegExp(
+    COUNT + '\\s+(?:confirmed\\s+|suspected\\s+|probable\\s+|total\\s+|reported\\s+|new\\s+)*cases', 'i'
+  ));
   return m ? toNumber(m[1]) : null;
 }
 
 function findDeaths(text){
-  const m = text.match(
-    /([0-9][0-9\s,\u00a0\u2009]{0,12})\s+(?:associated\s+|reported\s+|related\s+)*deaths/i
-  );
+  const m = text.match(new RegExp(
+    COUNT + '\\s+(?:associated\\s+|reported\\s+|related\\s+)*deaths', 'i'
+  ));
   return m ? toNumber(m[1]) : null;
 }
 
