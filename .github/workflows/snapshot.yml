@@ -1,0 +1,46 @@
+name: Daily outbreak snapshot
+
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Fetch the live collector output
+        run: |
+          curl -sS --fail --max-time 180 --retry 2 --retry-delay 30 \
+            "https://pandemic-tracker-ivory.vercel.app/api/outbreaks?cachebust=${GITHUB_RUN_ID}" \
+            -o /tmp/live.json
+          echo "fetched $(wc -c < /tmp/live.json) bytes"
+
+      - name: Write the snapshot
+        run: node tools/snapshot.mjs /tmp/live.json public/data/history
+
+      - name: Commit it
+        run: |
+          git config user.name  "outbreak-snapshot"
+          git config user.email "noreply@github.com"
+          git add public/data/history
+          if git diff --cached --quiet; then
+            echo "nothing changed today"
+            exit 0
+          fi
+          git commit -m "Snapshot $(date -u +%Y-%m-%d)"
+          git push
