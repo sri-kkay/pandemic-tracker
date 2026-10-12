@@ -467,13 +467,15 @@ function parseCSV(text){
 
 /* ILI consultation rate per 100,000. Roughly: under 200 is a quiet week,
    1000+ is a real wave. Tune these if the colours look wrong to you. */
+/* ERVISS reports consultations per 100,000 for ordinary respiratory illness.
+   Several hundred is a normal European winter, not an emergency, and the same
+   reasoning as above applies. */
 function fluSeverity(rate){
   if(rate == null) return null;
-  if(rate < 100)  return 8;
-  if(rate < 300)  return 18;
-  if(rate < 800)  return 30;
-  if(rate < 2000) return 45;
-  return 60;
+  if(rate < 300)  return 8;
+  if(rate < 800)  return 15;
+  if(rate < 2000) return 28;
+  return 42;
 }
 
 async function fetchERVISS(){
@@ -620,13 +622,23 @@ function findColumn(row, candidates){
 
 /* Influenza positivity is the standard measure of how active a season is.
    Under 5% is off-season; above 30% is an intense wave. */
+/* ── WHAT A NORMAL WINTER LOOKS LIKE ──────────────────────────────────────
+   These two scales decide the colour of roughly half the map, because for 89
+   countries routine respiratory surveillance is the only thing reporting at
+   all. The old bands called an ordinary flu season moderate and a brisk one
+   high, so Paraguay sat yellow on a single influenza case, the one case being
+   10% of the handful of specimens its lab happened to process that week.
+
+   Positivity is a ratio, not a count. Ten per cent is roughly where WHO marks
+   the start of a season, thirty is a high one, fifty is exceptional. A map
+   whose tiers read contained, moderate, high, severe and critical should call
+   a normal season contained, because it is. */
 function fluPositivitySeverity(pct){
   if(pct == null) return null;
-  if(pct < 5)  return 8;
-  if(pct < 15) return 20;
-  if(pct < 30) return 34;
-  if(pct < 50) return 48;
-  return 58;
+  if(pct < 10) return 8;      // below the usual epidemic threshold
+  if(pct < 30) return 15;     // a season under way, still contained
+  if(pct < 50) return 28;     // high activity
+  return 42;                  // exceptional
 }
 
 async function fetchFluNet(){

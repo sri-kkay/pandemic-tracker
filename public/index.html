@@ -152,6 +152,23 @@ html[dir="rtl"] #langsel{padding:5px 8px 5px 22px;background-position:12px 12px,
 #routinetoggle:hover{color:var(--ink)}
 #showroutine{accent-color:var(--s2);width:12px;height:12px;flex:none;cursor:pointer}
 #routinecount{margin-inline-start:auto;font-family:var(--font-num);font-size:9px;color:var(--ink-dim);white-space:nowrap}
+#railtabs{display:flex;gap:5px;padding:8px 14px 0;flex:none}
+#railtabs button{
+  flex:1;font-family:var(--font-num);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-dim);padding:6px 3px;border:1px solid var(--hairline);border-radius:3px;
+  background:none;cursor:pointer;
+}
+#railtabs button:hover{color:var(--ink-mute)}
+#railtabs button.on{color:var(--ink);border-color:var(--hairline-hi);background:var(--console-2)}
+.gitem{
+  display:grid;grid-template-columns:52px 1fr;gap:10px;padding:9px 14px 9px 10px;
+  border-block-end:1px solid var(--hairline);width:100%;text-align:start;
+}
+.gitem .when{font-family:var(--font-num);font-size:9px;text-align:end;padding-block-start:2px}
+.gitem .what{font-size:12px;line-height:1.35}
+.gitem .sub{font-family:var(--font-num);font-size:9px;color:var(--ink-dim);margin-block-start:2px;
+  letter-spacing:.04em}
+.railnote{padding:18px 16px;color:var(--ink-dim);font-size:11.5px;line-height:1.55}
 #feedsort{display:flex;gap:5px}
 #feedsort button{
   flex:1;font-family:var(--font-num);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;
@@ -453,6 +470,12 @@ a:hover{color:var(--ink)}
       <span id="feedcount" class="num"></span>
     </div>
 
+    <div id="railtabs" role="group">
+      <button class="on" data-tab="reports" data-i18n="tab.reports">Reports</button>
+      <button data-tab="changes" data-i18n="tab.changes">Changes</button>
+      <button data-tab="gaps"    data-i18n="tab.gaps">Gaps</button>
+    </div>
+
     <div id="controls">
       <div class="ctlrow">
         <span class="eyebrow" data-i18n="filter.minSeverity">Min severity</span>
@@ -595,14 +618,14 @@ en:{
  'sort.newest':'Newest','sort.worst':'Worst','sort.stale':'Most stale',
  'feed.head':'{n} reports · newest {age}','feed.headNoDates':'{n} reports · no dates','feed.undated':'{n} undated',
  'feed.empty':'Nothing at or above severity {n}. Lower the threshold to see quieter events.',
- 'level.country':'Country','level.state':'State','level.city':'City','tag.routine':'routine',
+ 'level.country':'Country','level.state':'State','tag.routine':'routine',
  'cases':'{n} cases','nocount':'no count',
  'tier.0':'contained','tier.1':'moderate','tier.2':'high','tier.3':'severe','tier.4':'critical','tier.none':'no data',
  'spine.title':'Countries by severity','spine.hint':'Click a tier to filter',
  'legend.hatched':'Hatched fill — nothing currently reported from there.',
  'legend.edge':'White edge — cases growing fast over the last 7 days.',
  'legend.saturation':'Deeper fill means more cases per 100,000 people.',
- 'sel.world':'World','sel.continent':'Continent','sel.country':'Country','sel.state':'State or province','sel.city':'City',
+ 'sel.world':'World','sel.continent':'Continent','sel.country':'Country','sel.state':'State or province',
  'sel.index':'Severity index · 0–100','sel.newest':'newest figure',
  'conf.high':'high confidence','conf.medium':'medium confidence','conf.low':'low confidence',
  /* Added with the endemic-baseline and official-source layers. Every other
@@ -638,14 +661,13 @@ en:{
  'ask.intro':'Searches WHO and CDC for this disease. The answers come from them, not from this site.',
  'ask.placeholder':'e.g. is it safe to travel to {place}?','ask.who':'Search WHO','ask.cdc':'Search CDC',
  'age.today':'today','age.yesterday':'yesterday','age.days':'{n}d ago','age.weeks':'{n}w ago','age.months':'{n}mo ago','age.nodate':'no date',
- 'tip.none':'No reported activity','tip.noLocal':'No data for this area specifically','tip.zoomOut':'Zoom out for national figures','tip.figuresFor':'figures for {region}',
- 'zoom.countries':'countries','zoom.states':'states','zoom.cities':'cities',
- 'zoom.nextStates':'scroll in for states','zoom.nextCities':'scroll in for cities',
+ 'tab.reports':'Reports','tab.changes':'Changes','tab.gaps':'Gaps','chg.title':'Since {date}','chg.up':'worse','chg.down':'eased','chg.appeared':'newly reported','chg.quiet':'no longer reported','chg.new':'new report','chg.none':'Nothing changed tier this week.','chg.waiting':'No history yet. The first comparison appears once a week of daily snapshots has built up.','gap.title':'Nothing reported for','gap.never':'never reported','gap.last':'last from {src}','gap.none':'Every country has reported within the last 90 days.','gap.intro':'Where the map cannot see. A country reporting nothing looks the same as a country with nothing to report.','tip.none':'No reported activity','tip.noLocal':'No data for this area specifically','tip.zoomOut':'Zoom out for national figures','tip.figuresFor':'figures for {region}',
+ 'zoom.countries':'countries','zoom.states':'states',
+ 'zoom.nextStates':'scroll in for states',
  'zoom.loading':'loading','zoom.statesMissing':'state data missing','crumb.world':'World',
  'note.offline':'Live data is unavailable. Showing the bundled snapshot.',
  'note.old':'This dataset is {n} days old. The pipeline may have stalled.',
  'note.admin1':'The state boundary file did not load, so states cannot be shown.',
- 'note.cities':'The city file did not load, so cities cannot be shown.',
  'foot.stat':'{n} reports · {c} places · newest {age}',
  'drawer.machine':'machine translation','drawer.partial':'partly untranslated',
  'drawer.translating':'translating…','drawer.noTranslation':'translation unavailable · showing English',
@@ -672,14 +694,14 @@ es:{
  'sort.newest':'Recientes','sort.worst':'Peores','sort.stale':'Más antiguos',
  'feed.head':'{n} informes · más reciente {age}','feed.headNoDates':'{n} informes · sin fechas','feed.undated':'{n} sin fecha',
  'feed.empty':'Nada con gravedad {n} o superior. Baja el umbral para ver eventos más leves.',
- 'level.country':'País','level.state':'Estado','level.city':'Ciudad','tag.routine':'rutina',
+ 'level.country':'País','level.state':'Estado','tag.routine':'rutina',
  'cases':'{n} casos','nocount':'sin recuento',
  'tier.0':'contenido','tier.1':'moderado','tier.2':'alto','tier.3':'grave','tier.4':'crítico','tier.none':'sin datos',
  'spine.title':'Países por gravedad','spine.hint':'Pulsa un nivel para filtrar',
  'legend.hatched':'Trama diagonal: no hay notificaciones actuales de esa zona.',
  'legend.edge':'Borde blanco: los casos crecen rápido en los últimos 7 días.',
  'legend.saturation':'Cuanto más intenso el relleno, más casos por cada 100.000 habitantes.',
- 'sel.world':'Mundo','sel.continent':'Continente','sel.country':'País','sel.state':'Estado o provincia','sel.city':'Ciudad',
+ 'sel.world':'Mundo','sel.continent':'Continente','sel.country':'País','sel.state':'Estado o provincia',
  'sel.index':'Índice de gravedad · 0–100','sel.newest':'cifra más reciente',
  'conf.high':'confianza alta','conf.medium':'confianza media','conf.low':'confianza baja',
  'sel.none':'No hay nada notificado aquí en el conjunto de datos actual. Eso no significa que no haya riesgo: revisa la confianza de notificación de arriba.',
@@ -699,14 +721,13 @@ es:{
  'ask.intro':'Busca esta enfermedad en la OMS y los CDC. Las respuestas vienen de ellos, no de este sitio.',
  'ask.placeholder':'p. ej.: ¿es seguro viajar a {place}?','ask.who':'Buscar en la OMS','ask.cdc':'Buscar en los CDC',
  'age.today':'hoy','age.yesterday':'ayer','age.days':'hace {n} d','age.weeks':'hace {n} sem','age.months':'hace {n} meses','age.nodate':'sin fecha',
- 'tip.none':'Sin actividad notificada','tip.noLocal':'Sin datos propios de esta zona','tip.zoomOut':'Aleja para ver las cifras nacionales','tip.figuresFor':'cifras de {region}',
- 'zoom.countries':'países','zoom.states':'estados','zoom.cities':'ciudades',
- 'zoom.nextStates':'acércate para ver estados','zoom.nextCities':'acércate para ver ciudades',
+ 'tab.reports':'Informes','tab.changes':'Cambios','tab.gaps':'Vacíos','chg.title':'Desde el {date}','chg.up':'peor','chg.down':'mejoró','chg.appeared':'nuevo registro','chg.quiet':'ya no se notifica','chg.new':'nuevo informe','chg.none':'Ningún país cambió de nivel esta semana.','chg.waiting':'Aún no hay histórico. La primera comparación aparece tras una semana de capturas diarias.','gap.title':'Sin notificaciones desde hace','gap.never':'nunca notificó','gap.last':'último de {src}','gap.none':'Todos los países han notificado en los últimos 90 días.','gap.intro':'Donde el mapa no ve. Un país que no notifica nada se ve igual que uno que no tiene nada que notificar.','tip.none':'Sin actividad notificada','tip.noLocal':'Sin datos propios de esta zona','tip.zoomOut':'Aleja para ver las cifras nacionales','tip.figuresFor':'cifras de {region}',
+ 'zoom.countries':'países','zoom.states':'estados',
+ 'zoom.nextStates':'acércate para ver estados',
  'zoom.loading':'cargando','zoom.statesMissing':'faltan datos de estados','crumb.world':'Mundo',
  'note.offline':'Los datos en vivo no están disponibles. Se muestra la copia incluida.',
  'note.old':'Este conjunto de datos tiene {n} días. El proceso puede estar detenido.',
  'note.admin1':'El archivo de fronteras estatales no se cargó, así que no se pueden mostrar los estados.',
- 'note.cities':'El archivo de ciudades no se cargó, así que no se pueden mostrar las ciudades.',
  'foot.stat':'{n} informes · {c} lugares · más reciente {age}',
  'drawer.machine':'traducción automática','drawer.partial':'parcialmente sin traducir',
  'drawer.translating':'traduciendo…','drawer.noTranslation':'traducción no disponible · se muestra en inglés',
@@ -733,14 +754,14 @@ fr:{
  'sort.newest':'Récents','sort.worst':'Plus graves','sort.stale':'Plus anciens',
  'feed.head':'{n} signalements · plus récent {age}','feed.headNoDates':'{n} signalements · sans dates','feed.undated':'{n} sans date',
  'feed.empty':'Rien au niveau de gravité {n} ou au-dessus. Baisse le seuil pour voir les événements plus calmes.',
- 'level.country':'Pays','level.state':'Région','level.city':'Ville','tag.routine':'routine',
+ 'level.country':'Pays','level.state':'Région','tag.routine':'routine',
  'cases':'{n} cas','nocount':'sans comptage',
  'tier.0':'maîtrisé','tier.1':'modéré','tier.2':'élevé','tier.3':'grave','tier.4':'critique','tier.none':'aucune donnée',
  'spine.title':'Pays par gravité','spine.hint':'Clique un niveau pour filtrer',
  'legend.hatched':'Hachures : aucun signalement en cours depuis cette zone.',
  'legend.edge':'Bord blanc : les cas augmentent vite sur les 7 derniers jours.',
  'legend.saturation':'Plus la couleur est dense, plus il y a de cas pour 100 000 habitants.',
- 'sel.world':'Monde','sel.continent':'Continent','sel.country':'Pays','sel.state':'Région ou province','sel.city':'Ville',
+ 'sel.world':'Monde','sel.continent':'Continent','sel.country':'Pays','sel.state':'Région ou province',
  'sel.index':'Indice de gravité · 0–100','sel.newest':'chiffre le plus récent',
  'conf.high':'confiance élevée','conf.medium':'confiance moyenne','conf.low':'confiance faible',
  'sel.none':'Rien n’est signalé ici dans le jeu de données actuel. Cela ne veut pas dire qu’il n’y a pas de risque : regarde la confiance de notification ci-dessus.',
@@ -760,14 +781,13 @@ fr:{
  'ask.intro':'Recherche cette maladie sur les sites de l’OMS et des CDC. Les réponses viennent d’eux, pas de ce site.',
  'ask.placeholder':'ex. : est-il sûr de voyager à {place} ?','ask.who':'Chercher à l’OMS','ask.cdc':'Chercher aux CDC',
  'age.today':'aujourd’hui','age.yesterday':'hier','age.days':'il y a {n} j','age.weeks':'il y a {n} sem','age.months':'il y a {n} mois','age.nodate':'sans date',
- 'tip.none':'Aucune activité signalée','tip.noLocal':'Aucune donnée propre à cette zone','tip.zoomOut':'Dézoomez pour les chiffres nationaux','tip.figuresFor':'chiffres pour {region}',
- 'zoom.countries':'pays','zoom.states':'régions','zoom.cities':'villes',
- 'zoom.nextStates':'zoome pour les régions','zoom.nextCities':'zoome pour les villes',
+ 'tab.reports':'Rapports','tab.changes':'Évolutions','tab.gaps':'Angles morts','chg.title':'Depuis le {date}','chg.up':'aggravé','chg.down':'apaisé','chg.appeared':'nouvellement signalé','chg.quiet':'plus de signalement','chg.new':'nouveau signalement','chg.none':'Aucun pays n’a changé de niveau cette semaine.','chg.waiting':'Pas encore d’historique. La première comparaison arrive après une semaine de captures quotidiennes.','gap.title':'Aucun signalement depuis','gap.never':'jamais signalé','gap.last':'dernier de {src}','gap.none':'Tous les pays ont signalé dans les 90 derniers jours.','gap.intro':'Là où la carte ne voit pas. Un pays qui ne signale rien ressemble à un pays qui n’a rien à signaler.','tip.none':'Aucune activité signalée','tip.noLocal':'Aucune donnée propre à cette zone','tip.zoomOut':'Dézoomez pour les chiffres nationaux','tip.figuresFor':'chiffres pour {region}',
+ 'zoom.countries':'pays','zoom.states':'régions',
+ 'zoom.nextStates':'zoome pour les régions',
  'zoom.loading':'chargement','zoom.statesMissing':'données régionales manquantes','crumb.world':'Monde',
  'note.offline':'Les données en direct sont indisponibles. Affichage de la copie embarquée.',
  'note.old':'Ce jeu de données a {n} jours. Le pipeline est peut-être bloqué.',
  'note.admin1':'Le fichier des frontières régionales n’a pas été chargé, les régions ne peuvent pas s’afficher.',
- 'note.cities':'Le fichier des villes n’a pas été chargé, les villes ne peuvent pas s’afficher.',
  'foot.stat':'{n} signalements · {c} lieux · plus récent {age}',
  'drawer.machine':'traduction automatique','drawer.partial':'partiellement non traduit',
  'drawer.translating':'traduction…','drawer.noTranslation':'traduction indisponible · affichage en anglais',
@@ -794,14 +814,14 @@ pt:{
  'sort.newest':'Recentes','sort.worst':'Piores','sort.stale':'Mais antigos',
  'feed.head':'{n} relatos · mais recente {age}','feed.headNoDates':'{n} relatos · sem datas','feed.undated':'{n} sem data',
  'feed.empty':'Nada com gravidade {n} ou acima. Baixe o limite para ver eventos mais brandos.',
- 'level.country':'País','level.state':'Estado','level.city':'Cidade','tag.routine':'rotina',
+ 'level.country':'País','level.state':'Estado','tag.routine':'rotina',
  'cases':'{n} casos','nocount':'sem contagem',
  'tier.0':'contido','tier.1':'moderado','tier.2':'alto','tier.3':'grave','tier.4':'crítico','tier.none':'sem dados',
  'spine.title':'Países por gravidade','spine.hint':'Clique num nível para filtrar',
  'legend.hatched':'Hachura: nada sendo notificado dessa área no momento.',
  'legend.edge':'Borda branca: casos crescendo rápido nos últimos 7 dias.',
  'legend.saturation':'Preenchimento mais forte significa mais casos por 100 mil habitantes.',
- 'sel.world':'Mundo','sel.continent':'Continente','sel.country':'País','sel.state':'Estado ou província','sel.city':'Cidade',
+ 'sel.world':'Mundo','sel.continent':'Continente','sel.country':'País','sel.state':'Estado ou província',
  'sel.index':'Índice de gravidade · 0–100','sel.newest':'número mais recente',
  'conf.high':'confiança alta','conf.medium':'confiança média','conf.low':'confiança baixa',
  'sel.none':'Nada é notificado aqui no conjunto de dados atual. Isso não é o mesmo que ausência de risco — veja a confiança de notificação acima.',
@@ -821,14 +841,13 @@ pt:{
  'ask.intro':'Busca esta doença na OMS e no CDC. As respostas vêm deles, não deste site.',
  'ask.placeholder':'ex.: é seguro viajar para {place}?','ask.who':'Buscar na OMS','ask.cdc':'Buscar no CDC',
  'age.today':'hoje','age.yesterday':'ontem','age.days':'há {n} d','age.weeks':'há {n} sem','age.months':'há {n} meses','age.nodate':'sem data',
- 'tip.none':'Sem atividade notificada','tip.noLocal':'Sem dados próprios desta área','tip.zoomOut':'Afaste para ver os números nacionais','tip.figuresFor':'números de {region}',
- 'zoom.countries':'países','zoom.states':'estados','zoom.cities':'cidades',
- 'zoom.nextStates':'aproxime para ver estados','zoom.nextCities':'aproxime para ver cidades',
+ 'tab.reports':'Relatos','tab.changes':'Mudanças','tab.gaps':'Lacunas','chg.title':'Desde {date}','chg.up':'piorou','chg.down':'melhorou','chg.appeared':'novo registro','chg.quiet':'não é mais notificado','chg.new':'novo relato','chg.none':'Nenhum país mudou de nível esta semana.','chg.waiting':'Ainda sem histórico. A primeira comparação surge após uma semana de capturas diárias.','gap.title':'Sem notificação há','gap.never':'nunca notificou','gap.last':'último de {src}','gap.none':'Todos os países notificaram nos últimos 90 dias.','gap.intro':'Onde o mapa não enxerga. Um país que não notifica nada parece igual a um que não tem o que notificar.','tip.none':'Sem atividade notificada','tip.noLocal':'Sem dados próprios desta área','tip.zoomOut':'Afaste para ver os números nacionais','tip.figuresFor':'números de {region}',
+ 'zoom.countries':'países','zoom.states':'estados',
+ 'zoom.nextStates':'aproxime para ver estados',
  'zoom.loading':'carregando','zoom.statesMissing':'faltam dados estaduais','crumb.world':'Mundo',
  'note.offline':'Dados ao vivo indisponíveis. Exibindo a cópia embutida.',
  'note.old':'Este conjunto de dados tem {n} dias. O pipeline pode ter parado.',
  'note.admin1':'O arquivo de fronteiras estaduais não carregou, então os estados não podem ser exibidos.',
- 'note.cities':'O arquivo de cidades não carregou, então as cidades não podem ser exibidas.',
  'foot.stat':'{n} relatos · {c} locais · mais recente {age}',
  'drawer.machine':'tradução automática','drawer.partial':'parcialmente sem tradução',
  'drawer.translating':'traduzindo…','drawer.noTranslation':'tradução indisponível · exibindo em inglês',
@@ -855,14 +874,14 @@ zh:{
  'sort.newest':'最新','sort.worst':'最严重','sort.stale':'最陈旧',
  'feed.head':'{n} 条通报 · 最新 {age}','feed.headNoDates':'{n} 条通报 · 无日期','feed.undated':'{n} 条无日期',
  'feed.empty':'没有严重度达到 {n} 的记录。调低阈值可查看较轻的事件。',
- 'level.country':'国家','level.state':'省/州','level.city':'城市','tag.routine':'例行',
+ 'level.country':'国家','level.state':'省/州','tag.routine':'例行',
  'cases':'{n} 例','nocount':'无计数',
  'tier.0':'已控制','tier.1':'中等','tier.2':'较高','tier.3':'严重','tier.4':'危急','tier.none':'无数据',
  'spine.title':'各国严重度分布','spine.hint':'点击等级即可筛选',
  'legend.hatched':'斜纹填充：该地区目前没有通报。',
  'legend.edge':'白色轮廓：过去 7 天病例增长迅速。',
  'legend.saturation':'颜色越深，每 10 万人中的病例越多。',
- 'sel.world':'全球','sel.continent':'大洲','sel.country':'国家','sel.state':'省/州','sel.city':'城市',
+ 'sel.world':'全球','sel.continent':'大洲','sel.country':'国家','sel.state':'省/州',
  'sel.index':'严重度指数 · 0–100','sel.newest':'最新数据',
  'conf.high':'报告可信度高','conf.medium':'报告可信度中','conf.low':'报告可信度低',
  'sel.none':'当前数据集中该地区没有通报。这并不等于没有风险——请参考上方的报告可信度。',
@@ -882,14 +901,13 @@ zh:{
  'ask.intro':'在世卫组织和美国 CDC 网站上搜索这种疾病。答案来自它们，而不是本站。',
  'ask.placeholder':'例如：现在去{place}安全吗？','ask.who':'搜索世卫组织','ask.cdc':'搜索 CDC',
  'age.today':'今天','age.yesterday':'昨天','age.days':'{n} 天前','age.weeks':'{n} 周前','age.months':'{n} 个月前','age.nodate':'无日期',
- 'tip.none':'没有通报的疫情','tip.noLocal':'该地区没有单独的数据','tip.zoomOut':'缩小查看全国数据','tip.figuresFor':'{region}的数据',
- 'zoom.countries':'国家','zoom.states':'省/州','zoom.cities':'城市',
- 'zoom.nextStates':'继续放大查看省/州','zoom.nextCities':'继续放大查看城市',
+ 'tab.reports':'通报','tab.changes':'变化','tab.gaps':'盲区','chg.title':'自{date}以来','chg.up':'恶化','chg.down':'缓解','chg.appeared':'新增通报','chg.quiet':'已无通报','chg.new':'新通报','chg.none':'本周没有国家的等级发生变化。','chg.waiting':'尚无历史数据。积累一周的每日快照后将出现首次对比。','gap.title':'已无通报','gap.never':'从未通报','gap.last':'最近来自{src}','gap.none':'所有国家在过去90天内均有通报。','gap.intro':'地图看不到的地方。没有通报的国家，和没有疫情可报的国家，在地图上看起来一样。','tip.none':'没有通报的疫情','tip.noLocal':'该地区没有单独的数据','tip.zoomOut':'缩小查看全国数据','tip.figuresFor':'{region}的数据',
+ 'zoom.countries':'国家','zoom.states':'省/州',
+ 'zoom.nextStates':'继续放大查看省/州',
  'zoom.loading':'加载中','zoom.statesMissing':'缺少省/州数据','crumb.world':'全球',
  'note.offline':'无法获取实时数据，正在显示内置快照。',
  'note.old':'该数据集已有 {n} 天，数据流水线可能已停止。',
  'note.admin1':'省/州边界文件未能加载，无法显示省/州。',
- 'note.cities':'城市文件未能加载，无法显示城市。',
  'foot.stat':'{n} 条通报 · {c} 个地点 · 最新 {age}',
  'drawer.machine':'机器翻译','drawer.partial':'部分未翻译',
  'drawer.translating':'正在翻译…','drawer.noTranslation':'无法翻译 · 显示英文原文',
@@ -916,14 +934,14 @@ hi:{
  'sort.newest':'नवीनतम','sort.worst':'सबसे गंभीर','sort.stale':'सबसे पुरानी',
  'feed.head':'{n} रिपोर्टें · नवीनतम {age}','feed.headNoDates':'{n} रिपोर्टें · तिथि नहीं','feed.undated':'{n} बिना तिथि',
  'feed.empty':'गंभीरता {n} या उससे ऊपर कुछ नहीं है। हल्की घटनाएँ देखने के लिए सीमा घटाएँ।',
- 'level.country':'देश','level.state':'राज्य','level.city':'शहर','tag.routine':'नियमित',
+ 'level.country':'देश','level.state':'राज्य','tag.routine':'नियमित',
  'cases':'{n} मामले','nocount':'गिनती नहीं',
  'tier.0':'नियंत्रित','tier.1':'मध्यम','tier.2':'उच्च','tier.3':'गंभीर','tier.4':'अति गंभीर','tier.none':'डेटा नहीं',
  'spine.title':'गंभीरता के अनुसार देश','spine.hint':'छाँटने के लिए स्तर पर क्लिक करें',
  'legend.hatched':'तिरछी धारियाँ: वहाँ से फ़िलहाल कोई रिपोर्ट नहीं।',
  'legend.edge':'सफ़ेद किनारा: पिछले 7 दिनों में मामले तेज़ी से बढ़ रहे हैं।',
  'legend.saturation':'गहरा रंग यानी प्रति 1,00,000 लोगों पर अधिक मामले।',
- 'sel.world':'विश्व','sel.continent':'महाद्वीप','sel.country':'देश','sel.state':'राज्य या प्रांत','sel.city':'शहर',
+ 'sel.world':'विश्व','sel.continent':'महाद्वीप','sel.country':'देश','sel.state':'राज्य या प्रांत',
  'sel.index':'गंभीरता सूचकांक · 0–100','sel.newest':'नवीनतम आँकड़ा',
  'conf.high':'रिपोर्टिंग भरोसा: उच्च','conf.medium':'रिपोर्टिंग भरोसा: मध्यम','conf.low':'रिपोर्टिंग भरोसा: कम',
  'sel.none':'मौजूदा डेटा में यहाँ से कुछ रिपोर्ट नहीं हुआ है। इसका मतलब जोखिम न होना नहीं है — ऊपर दिया रिपोर्टिंग भरोसा देखें।',
@@ -943,14 +961,13 @@ hi:{
  'ask.intro':'WHO और CDC पर इस बीमारी को खोजता है। जवाब उन्हीं से आते हैं, इस साइट से नहीं।',
  'ask.placeholder':'जैसे: क्या {place} की यात्रा सुरक्षित है?','ask.who':'WHO पर खोजें','ask.cdc':'CDC पर खोजें',
  'age.today':'आज','age.yesterday':'कल','age.days':'{n} दिन पहले','age.weeks':'{n} सप्ताह पहले','age.months':'{n} माह पहले','age.nodate':'तिथि नहीं',
- 'tip.none':'कोई रिपोर्ट नहीं','tip.noLocal':'इस क्षेत्र के अलग आँकड़े नहीं','tip.zoomOut':'राष्ट्रीय आँकड़ों के लिए ज़ूम आउट करें','tip.figuresFor':'{region} के आँकड़े',
- 'zoom.countries':'देश','zoom.states':'राज्य','zoom.cities':'शहर',
- 'zoom.nextStates':'राज्यों के लिए और ज़ूम करें','zoom.nextCities':'शहरों के लिए और ज़ूम करें',
+ 'tab.reports':'रिपोर्ट','tab.changes':'बदलाव','tab.gaps':'अंधे क्षेत्र','chg.title':'{date} से','chg.up':'बिगड़ा','chg.down':'सुधरा','chg.appeared':'नई रिपोर्ट','chg.quiet':'अब रिपोर्ट नहीं','chg.new':'नई रिपोर्ट','chg.none':'इस सप्ताह किसी देश का स्तर नहीं बदला।','chg.waiting':'अभी इतिहास नहीं है। एक सप्ताह के दैनिक स्नैपशॉट के बाद पहली तुलना दिखेगी।','gap.title':'कोई रिपोर्ट नहीं, पिछले','gap.never':'कभी रिपोर्ट नहीं','gap.last':'अंतिम {src} से','gap.none':'हर देश ने पिछले 90 दिनों में रिपोर्ट की है।','gap.intro':'जहाँ नक्शा नहीं देख पाता। जो देश कुछ नहीं बताता, वह उस देश जैसा ही दिखता है जिसके पास बताने को कुछ नहीं।','tip.none':'कोई रिपोर्ट नहीं','tip.noLocal':'इस क्षेत्र के अलग आँकड़े नहीं','tip.zoomOut':'राष्ट्रीय आँकड़ों के लिए ज़ूम आउट करें','tip.figuresFor':'{region} के आँकड़े',
+ 'zoom.countries':'देश','zoom.states':'राज्य',
+ 'zoom.nextStates':'राज्यों के लिए और ज़ूम करें',
  'zoom.loading':'लोड हो रहा है','zoom.statesMissing':'राज्य डेटा नहीं मिला','crumb.world':'विश्व',
  'note.offline':'लाइव डेटा उपलब्ध नहीं है। साथ में रखी प्रति दिखाई जा रही है।',
  'note.old':'यह डेटा {n} दिन पुराना है। पाइपलाइन रुकी हो सकती है।',
  'note.admin1':'राज्य सीमाओं की फ़ाइल लोड नहीं हुई, इसलिए राज्य नहीं दिखाए जा सकते।',
- 'note.cities':'शहरों की फ़ाइल लोड नहीं हुई, इसलिए शहर नहीं दिखाए जा सकते।',
  'foot.stat':'{n} रिपोर्टें · {c} स्थान · नवीनतम {age}',
  'drawer.machine':'मशीनी अनुवाद','drawer.partial':'कुछ हिस्से अनूदित नहीं',
  'drawer.translating':'अनुवाद हो रहा है…','drawer.noTranslation':'अनुवाद उपलब्ध नहीं · अंग्रेज़ी में दिखाया जा रहा है',
@@ -977,14 +994,14 @@ ar:{
  'sort.newest':'الأحدث','sort.worst':'الأشد','sort.stale':'الأقدم',
  'feed.head':'{n} تقريرًا · الأحدث {age}','feed.headNoDates':'{n} تقريرًا · بلا تواريخ','feed.undated':'{n} بلا تاريخ',
  'feed.empty':'لا شيء عند درجة الخطورة {n} أو أعلى. اخفض العتبة لرؤية الأحداث الأهدأ.',
- 'level.country':'دولة','level.state':'ولاية','level.city':'مدينة','tag.routine':'اعتيادي',
+ 'level.country':'دولة','level.state':'ولاية','tag.routine':'اعتيادي',
  'cases':'{n} حالة','nocount':'بلا عدد',
  'tier.0':'تحت السيطرة','tier.1':'متوسط','tier.2':'مرتفع','tier.3':'شديد','tier.4':'حرج','tier.none':'لا بيانات',
  'spine.title':'الدول حسب الخطورة','spine.hint':'اضغط على مستوى للتصفية',
  'legend.hatched':'التظليل المائل: لا توجد تقارير حالية من تلك المنطقة.',
  'legend.edge':'الحافة البيضاء: الحالات تتزايد بسرعة خلال آخر 7 أيام.',
  'legend.saturation':'كلما زاد عمق اللون زادت الحالات لكل 100000 نسمة.',
- 'sel.world':'العالم','sel.continent':'قارة','sel.country':'دولة','sel.state':'ولاية أو محافظة','sel.city':'مدينة',
+ 'sel.world':'العالم','sel.continent':'قارة','sel.country':'دولة','sel.state':'ولاية أو محافظة',
  'sel.index':'مؤشر الخطورة · 0–100','sel.newest':'أحدث رقم',
  'conf.high':'موثوقية إبلاغ عالية','conf.medium':'موثوقية إبلاغ متوسطة','conf.low':'موثوقية إبلاغ منخفضة',
  'sel.none':'لا توجد تقارير من هنا في مجموعة البيانات الحالية. هذا لا يعني انعدام الخطر — راجع موثوقية الإبلاغ أعلاه.',
@@ -1004,14 +1021,13 @@ ar:{
  'ask.intro':'يبحث عن هذا المرض في منظمة الصحة العالمية ومراكز CDC. الإجابات منهما، لا من هذا الموقع.',
  'ask.placeholder':'مثال: هل السفر إلى {place} آمن؟','ask.who':'ابحث في منظمة الصحة','ask.cdc':'ابحث في CDC',
  'age.today':'اليوم','age.yesterday':'أمس','age.days':'قبل {n} يوم','age.weeks':'قبل {n} أسبوع','age.months':'قبل {n} شهر','age.nodate':'بلا تاريخ',
- 'tip.none':'لا نشاط مُبلَّغ عنه','tip.noLocal':'لا توجد بيانات خاصة بهذه المنطقة','tip.zoomOut':'صغّر العرض لرؤية الأرقام الوطنية','tip.figuresFor':'أرقام {region}',
- 'zoom.countries':'الدول','zoom.states':'الولايات','zoom.cities':'المدن',
- 'zoom.nextStates':'قرّب لعرض الولايات','zoom.nextCities':'قرّب لعرض المدن',
+ 'tab.reports':'التقارير','tab.changes':'التغيّرات','tab.gaps':'النقاط العمياء','chg.title':'منذ {date}','chg.up':'تفاقم','chg.down':'انحسر','chg.appeared':'تقرير جديد','chg.quiet':'لم يعد يُبلَّغ عنه','chg.new':'بلاغ جديد','chg.none':'لم يتغيّر مستوى أي دولة هذا الأسبوع.','chg.waiting':'لا يوجد سجل بعد. تظهر المقارنة الأولى بعد أسبوع من اللقطات اليومية.','gap.title':'لا بلاغات منذ','gap.never':'لم تُبلّغ قط','gap.last':'آخرها من {src}','gap.none':'كل الدول أبلغت خلال التسعين يومًا الماضية.','gap.intro':'حيث لا ترى الخريطة. الدولة التي لا تُبلّغ عن شيء تبدو كالدولة التي لا شيء لديها لتبلّغ عنه.','tip.none':'لا نشاط مُبلَّغ عنه','tip.noLocal':'لا توجد بيانات خاصة بهذه المنطقة','tip.zoomOut':'صغّر العرض لرؤية الأرقام الوطنية','tip.figuresFor':'أرقام {region}',
+ 'zoom.countries':'الدول','zoom.states':'الولايات',
+ 'zoom.nextStates':'قرّب لعرض الولايات',
  'zoom.loading':'جارٍ التحميل','zoom.statesMissing':'بيانات الولايات مفقودة','crumb.world':'العالم',
  'note.offline':'البيانات المباشرة غير متاحة. تُعرض النسخة المرفقة.',
  'note.old':'عمر هذه البيانات {n} يومًا. قد يكون خط البيانات متوقفًا.',
  'note.admin1':'لم يُحمَّل ملف حدود الولايات، لذا لا يمكن عرض الولايات.',
- 'note.cities':'لم يُحمَّل ملف المدن، لذا لا يمكن عرض المدن.',
  'foot.stat':'{n} تقريرًا · {c} موقعًا · الأحدث {age}',
  'drawer.machine':'ترجمة آلية','drawer.partial':'مترجَم جزئيًا',
  'drawer.translating':'جارٍ الترجمة…','drawer.noTranslation':'الترجمة غير متاحة · يُعرض النص الإنجليزي',
@@ -1085,7 +1101,7 @@ const PALETTES = {
     clear:0x080A0B, ocean:'#0D1315', graticule:'rgba(150,175,185,.05)',
     hatchBg:'#121A1D', hatchLine:'#263036', blend:[13,19,21],
     border:0x9FB3BE, borderOp:0.38, hot:0xFFFFFF, hotOp:0.9,
-    admin1:0xB9C8D1, admin1Op:0.55, city:0xEDE9E0,
+    admin1:0xB9C8D1, admin1Op:0.55,
     star:0x8E9CA6, starOp:0.45, atmo:[0.24,0.42,0.62], atmoStr:0.85,
     tiers:['#21A45C','#D0A02C','#E8743B','#D93A3A','#8E2020'], nodata:'#3A4046',
     ok:'#21A45C', warn:'#D0A02C', mid:'#E8743B', bad:'#D93A3A', flat:'#9C978C', dim:'#6C6860'
@@ -1094,7 +1110,7 @@ const PALETTES = {
     clear:0xC6CAC7, ocean:'#BCC3C2', graticule:'rgba(40,55,55,.07)',
     hatchBg:'#CDD1CB', hatchLine:'#AEB4AD', blend:[188,195,194],
     border:0x4B5158, borderOp:0.5, hot:0x1A1D20, hotOp:0.85,
-    admin1:0x6B7078, admin1Op:0.45, city:0x23262A,
+    admin1:0x6B7078, admin1Op:0.45,
     star:0xB5B2A8, starOp:0, atmo:[0.40,0.46,0.48], atmoStr:0.28,
     tiers:['#1B7F45','#8F6710','#BC5320','#AE2320','#761A1A'], nodata:'#A6A59A',
     ok:'#1B7F45', warn:'#8F6710', mid:'#BC5320', bad:'#AE2320', flat:'#575A52', dim:'#7E8077'
@@ -1133,7 +1149,6 @@ function repaintTheme(){
   if(borderLines){ borderLines.material.color.setHex(PAL.border); borderLines.material.opacity = PAL.borderOp; }
   if(hotspotLines){ hotspotLines.material.color.setHex(PAL.hot); hotspotLines.material.opacity = PAL.hotOp; }
   if(admin1Lines) admin1Lines.material.color.setHex(PAL.admin1);
-  if(cityPoints) cityPoints.material.color.setHex(PAL.city);
   hatchPattern = null;                 // rebuilt with the new palette on next paint
   paint();
   if(S.countries) refresh();
@@ -1367,7 +1382,7 @@ function diseaseKey(name){
    the primary feed before it goes public.
 
    Keys: countries = ISO-3166 alpha-3. Subnational = "ISO3:Region Name".
-   Cities = "ISO3:City Name". This is exactly the shape your API should emit. */
+   This is exactly the shape the API emits. */
 
 const SEED = {
   updated: '2026-07-27T00:00:00Z',
@@ -1474,27 +1489,6 @@ const SEED = {
       diseases:[{name:'Dengue', cases:null, per100k:520, source:'PAHO PLISA subnational', url:'https://www.paho.org/plisa'}] }
   },
 
-  /* City tier. Global city-level case counts do not exist as a single feed —
-     these are outbreak *event locations*, which do. See guide §6. */
-  cities: {
-    'COD:Bunia':      { lat:1.5586,  lon:30.2470, severity:93, conf:'low',
-      diseases:[{name:'Ebola (Bundibugyo virus)', cases:null, source:'WHO Health Emergency Dashboard event location',
-        url:'https://extranet.who.int/publicemergency/'}] },
-    'COD:Kinshasa':   { lat:-4.4419, lon:15.2663, severity:44, conf:'medium',
-      diseases:[{name:'Ebola (Bundibugyo virus)', cases:null, source:'WHO Health Emergency Dashboard event location',
-        url:'https://extranet.who.int/publicemergency/'}] },
-    'UGA:Kampala':    { lat:0.3476,  lon:32.5825, severity:61, conf:'medium',
-      diseases:[{name:'Ebola (Bundibugyo virus)', cases:null, source:'WHO Health Emergency Dashboard event location',
-        url:'https://extranet.who.int/publicemergency/'}] },
-    'MDV:Malé':       { lat:4.1755,  lon:73.5093, severity:38, conf:'high',
-      diseases:[{name:'Measles', cases:144, source:'WHO SEARO — Greater Malé', provisional:true,
-        url:'https://www.who.int/southeastasia/health-topics/emergencies'}] },
-    'BRA:São Paulo':  { lat:-23.5505,lon:-46.6333,severity:46, conf:'high',
-      diseases:[{name:'Dengue', cases:null, source:'PAHO PLISA', url:'https://www.paho.org/plisa'}] },
-    'ZAF:Johannesburg':{lat:-26.2041,lon:28.0473, severity:33, conf:'high',
-      diseases:[{name:'Measles', cases:null, source:'NICD weekly situation report', url:'https://www.nicd.ac.za/'}] }
-  },
-
   /* Bottom-right drawer content, keyed by disease name.
 
      This is only the offline snapshot — enough to make the drawer work if the
@@ -1576,9 +1570,8 @@ const GEO = {
   /* Bundled with the project. Natural Earth's worldwide admin-1 file is 38 MB,
      which is far too heavy for a browser, so it was simplified down to 1.7 MB
      (3,978 regions across 218 countries) and shipped in public/data/.
-     Cities are the major ones only — capitals, megacities and pop >= 300k. */
+     */
   admin1:   ['data/admin1.json'],
-  cities:   ['data/cities.json'],
   /* The curated drawer library, generated from api/_guidance.js by
      `node tools/build-guidance.mjs`. Shipping it means the drawer is right
      even when the serverless functions are unreachable. */
@@ -1597,10 +1590,11 @@ async function fetchFirst(urls){
 /* ── 4. STATE ─────────────────────────────────────────────────────────── */
 
 const S = {
-  countries:null, admin1:null, cities:null,
+  countries:null, admin1:null,
+  railTab:'reports', baseline:null, baselineDate:null, historyDates:null,
   byISO:new Map(), continents:new Map(),
-  view:{level:'world', continent:null, iso:null, region:null, city:null},
-  lod:'world',          // world | region | city
+  view:{level:'world', continent:null, iso:null, region:null},
+  lod:'world',          // world | region
   hover:null, threshold:0, tab:'treatments', sort:'recent', showRoutine:false,
   disease:null,         // which disease the drawer is describing
   chip:null,            // which FAQ chip is expanded, if any
@@ -1760,10 +1754,6 @@ function buildEntities(){
   for(const [iso, kids] of regionsOf){
     if(S.entities.has(iso)) continue;
     S.entities.set(iso, {key:iso, level:'country', sev:majorityOf(kids), rec:{diseases:[]}});
-  }
-  // cities
-  for(const [k,rec] of Object.entries(SEED.cities)){
-    S.entities.set(k, {key:k, level:'city', sev:entitySeverity(rec), rec});
   }
   // continents = rollup of their countries
   for(const [cont, isos] of S.continents){
@@ -1948,16 +1938,12 @@ function contOf(f){ const p=f.properties; return p.CONTINENT || p.continent || '
 
      always      country outlines
      z < 2.60    state / province lines   (worldwide, 218 countries)
-     z < 1.95    major city markers       (capitals, megacities, pop >= 300k)
 
-   The state and city layers are built ONCE, the first time you zoom in far
-   enough, then just faded and toggled. Rebuilding them per frame would be
-   far too slow — there are 137,000 line points in the state layer.
+   The state layer is built ONCE, the first time you zoom in far enough, then
+   just faded and toggled. Rebuilding it per frame would be far too slow —
+   there are 137,000 line points in it. */
 
-   Cities are tiered so the view never turns to soup: capitals and megacities
-   appear first, then million-plus cities, then the rest only at full zoom. */
-
-let borderLines = null, hotspotLines = null, admin1Lines = null, cityPoints = null, stars = null;
+let borderLines = null, hotspotLines = null, admin1Lines = null, stars = null;
 
 /* fade helper: 1 when z is at or below `lo`, 0 at or above `hi` */
 function fadeIn(z, hi, lo){
@@ -1968,8 +1954,7 @@ function fadeIn(z, hi, lo){
 }
 
 const FADE = {
-  admin1: { hi:2.85, lo:2.50 },   // states begin appearing on the first scroll
-  city:   { hi:2.10, lo:1.85 }    // cities a little further in
+  admin1: { hi:2.85, lo:2.50 }    // states begin appearing on the first scroll
 };
 
 function buildLines(features, colour, opacity, radius, filter){
@@ -2022,25 +2007,6 @@ function finishLine(pts, colour, opacity){
   return line;
 }
 
-function buildCityPoints(){
-  if(!S.cities) return null;
-  const pos = [], tiers = [];
-  for(const [, lon, lat, tier] of S.cities){
-    const v = latLonToVec(lat, lon, R*1.004);
-    pos.push(v.x, v.y, v.z);
-    tiers.push(tier);
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  const p = new THREE.Points(g, new THREE.PointsMaterial({
-    color:PAL.city, size:0.006, sizeAttenuation:true,
-    transparent:true, opacity:0, depthWrite:false
-  }));
-  p.userData.tiers = tiers;
-  p.visible = false;
-  return p;
-}
-
 function disposeLine(obj){
   if(!obj) return;
   spin.remove(obj);
@@ -2071,7 +2037,6 @@ function rebuildBorders(){
 /* Called every frame — cheap, just adjusts opacity on prebuilt geometry */
 function updateDetailLayers(){
   const a = fadeIn(cam.z, FADE.admin1.hi, FADE.admin1.lo);
-  const c = fadeIn(cam.z, FADE.city.hi,   FADE.city.lo);
 
   if(a > 0 && !admin1Lines && S.admin1){
     admin1Lines = buildAdmin1Lines();
@@ -2082,19 +2047,8 @@ function updateDetailLayers(){
     admin1Lines.visible = a > 0.01;
   }
 
-  if(c > 0 && !cityPoints && S.cities){
-    cityPoints = buildCityPoints();
-    if(cityPoints) spin.add(cityPoints);
-  }
-  if(cityPoints){
-    cityPoints.material.opacity = c * 0.9;
-    cityPoints.material.size = 0.004 + c * 0.004;
-    cityPoints.visible = c > 0.01;
-  }
-
-  // datasets are preloaded at boot; this is just a safety net if that failed
+  // the dataset is preloaded at boot; this is just a safety net if that failed
   if(cam.z < FADE.admin1.hi + 0.4) ensureAdmin1();
-  if(cam.z < FADE.city.hi   + 0.4) ensureCities();
 }
 
 /* ── 7. THREE.JS SCENE ────────────────────────────────────────────────── */
@@ -2215,12 +2169,16 @@ function facing(lat, lon){
 const cam = { rx:0.28, ry:-1.2, z:3.1, trx:0.28, try_:-1.2, tz:3.1 };
 
 const ZOOM_MIN = 1.28, ZOOM_MAX = 3.4;
-const LOD_REGION = 2.75, LOD_CITY = 2.00;   // kept in step with FADE above
+const LOD_REGION = 2.75;                    // kept in step with FADE above
+const LABEL_REGIONS_BELOW = 2.05;           // past here the labels name regions, not countries
 
+/* Two tiers, countries and regions. There used to be a third for cities, but
+   no feed publishes outbreak counts at city level, so every dot on it was
+   borrowing its colour from the region underneath and the deepest zoom told
+   you nothing the one above it had not already said. Zooming in still works,
+   it just keeps showing regions, larger. */
 function currentLOD(){
-  if(cam.z > LOD_REGION) return 'world';
-  if(cam.z > LOD_CITY)   return 'region';
-  return 'city';
+  return cam.z > LOD_REGION ? 'world' : 'region';
 }
 
 /* ── 9. INTERACTION ───────────────────────────────────────────────────── */
@@ -2354,34 +2312,12 @@ function regionByName(iso, name){
   const hit = regions.find(r => r[0] === name);
   return hit ? {name:hit[0], rings:hit[1], iso} : null;
 }
-/* Nearest major city to a point. Checks the bundled geography first, then
-   looks for a matching record in the surveillance data. */
-function findCityNear(lat, lon, maxDeg){
-  if(!S.cities) return null;
-  const cosLat = Math.cos(lat * Math.PI / 180);
-  let best = null, bd = Infinity;
-  for(const c of S.cities){
-    const d = Math.hypot(c[2] - lat, (c[1] - lon) * cosLat);
-    if(d < bd){ bd = d; best = c; }
-  }
-  if(bd > maxDeg || !best) return null;
-  const [name, lonC, latC, tier, iso, adm1] = best;
-  return { name, lon:lonC, lat:latC, tier, iso, adm1,
-           key: iso + ':' + name,
-           rec: SEED.cities[iso + ':' + name] || null };
-}
 
 /* ── 10. DRILL-DOWN ────────────────────────────────────────────────────── */
 
 function onClick(e){
   const ll = pick(e); if(!ll) return;
   const lod = currentLOD();
-
-  // deepest tier first: a city marker beats the region under it
-  if(lod === 'city'){
-    const c = findCityNear(ll.lat, ll.lon, 2.2);
-    if(c){ selectCity(c); return; }
-  }
 
   const f = findCountry(ll.lat, ll.lon);
   if(!f) return;
@@ -2393,7 +2329,7 @@ function onClick(e){
   }
   if(lod !== 'world'){
     const a = findAdmin1(ll.lat, ll.lon, iso);
-    if(a && (S.view.iso === iso || lod === 'city')){ selectAdmin1(iso, a); return; }
+    if(a && S.view.iso === iso){ selectAdmin1(iso, a); return; }
   }
   selectCountry(iso, f);
 }
@@ -2433,35 +2369,28 @@ const CONTINENT_VIEW = {
 };
 
 function selectContinent(cont){
-  S.view = {level:'continent', continent:cont, iso:null, region:null, city:null};
+  S.view = {level:'continent', continent:cont, iso:null, region:null};
   const v = CONTINENT_VIEW[cont] || {lat:0,lon:0,z:2.1};
   flyTo(v.lat, v.lon, v.z);
   refresh();
 }
 function selectCountry(iso, feature){
   const f = feature || S.countries.features.find(x=>isoOf(x)===iso);
-  S.view = {level:'country', continent:f?contOf(f):S.view.continent, iso, region:null, city:null};
+  S.view = {level:'country', continent:f?contOf(f):S.view.continent, iso, region:null};
   if(f){ const c = centroidOf(f); flyTo(c.lat, c.lon, 1.72); }
   ensureAdmin1();
   refresh();
 }
 function selectAdmin1(iso, region){
-  S.view = {level:'admin1', continent:S.view.continent, iso, region:region.name, city:null};
+  S.view = {level:'admin1', continent:S.view.continent, iso, region:region.name};
   const c = centroidOfFlat(region.rings);
   flyTo(c.lat, c.lon, 1.55);
   refresh();
 }
-function selectCity(c){
-  S.view = {level:'city', continent:S.view.continent, iso:c.iso,
-            region: c.adm1 || S.view.region, city:c.name};
-  flyTo(c.lat, c.lon, 1.34);
-  refresh();
-}
-function goWorld(){ S.view={level:'world',continent:null,iso:null,region:null,city:null}; cam.tz=3.1; refresh(); }
+function goWorld(){ S.view={level:'world',continent:null,iso:null,region:null}; cam.tz=3.1; refresh(); }
 function goUp(){
   const v = S.view;
-  if(v.level==='city')      { v.level = v.region ? 'admin1' : 'country'; v.city=null; cam.tz=1.6; }
-  else if(v.level==='admin1'){ v.level='country'; v.region=null; cam.tz=1.75; }
+  if(v.level==='admin1')     { v.level='country'; v.region=null; cam.tz=1.75; }
   else if(v.level==='country'){ selectContinent(v.continent||'Africa'); return; }
   else goWorld();
   refresh();
@@ -2478,17 +2407,6 @@ function ensureAdmin1(){
       note(t('note.admin1'));
     })
     .finally(()=>{ S._a1loading = false; });
-}
-function ensureCities(){
-  if(S.cities || S._ctloading || S._ctfailed) return;
-  S._ctloading = true;
-  fetchFirst(GEO.cities)
-    .then(j=>{ S.cities = j; })
-    .catch(()=>{
-      S._ctfailed = true;
-      note(t('note.cities'));
-    })
-    .finally(()=>{ S._ctloading = false; });
 }
 
 /* ── 11. HOVER ────────────────────────────────────────────────────────── */
@@ -2515,22 +2433,6 @@ function onHover(e){
        under a name are the ones reported for that name, and anything taken
        from a larger area says whose it is. */
     let noLocal = false;
-
-    // city marker under the cursor?
-    if(lod === 'city'){
-      const c = findCityNear(ll.lat, ll.lon, 1.6);
-      if(c){
-        name = c.name;
-        rec  = c.rec;
-        // a city's own record, else its state's, clearly labelled as the state's
-        if(!rec && c.adm1){
-          rec = SEED.admin1[c.iso + ':' + c.adm1] || null;
-          if(rec) note = t('tip.figuresFor', {region:c.adm1});
-        }
-        if(!rec){ noLocal = true; note = t('tip.zoomOut'); }
-        sev = rec ? entitySeverity(rec) : null;
-      }
-    }
 
     // state / province
     if(!name && lod !== 'world' && iso){
@@ -2573,9 +2475,22 @@ function showTip(e, name, rec, sev, scopeNote, noLocal){
      here, the uncounted ones are all there is and the card shows them. */
   const ranked  = rankedDiseases(rec);
   const counted = ranked.filter(d => d.cases != null && d.cases > 0);
-  const lead    = ranked[0];
-  const dis = !counted.length ? ranked
-            : (lead && !counted.includes(lead) ? [lead, ...counted] : counted);
+
+  /* An uncounted record is noise beside real figures, with one exception: when
+     it is the reason for the colour. Algeria reads high on a diphtheria
+     bulletin and a current CDC polio notice, neither of which carries a
+     number, and dropping both left a high country showing a single case of
+     flu and no explanation. So an uncounted record stays when it shares the
+     tier the place is being painted with, and only once that tier is worth
+     explaining: nobody looks at a green country and asks why. */
+  const explains = d => sev != null && sev >= 20
+                     && (d.cases == null || d.cases <= 0)
+                     && tierIndex(diseaseSeverity(d)) === tierIndex(sev);
+
+  const keep = ranked.filter(d => (d.cases != null && d.cases > 0) || explains(d));
+  const lead = ranked[0];
+  const dis = keep.length ? (lead && !keep.includes(lead) ? [lead, ...keep] : keep)
+                          : ranked;
 
   /* "nothing reported here" and "nobody reports at this level" are different
      claims and the tooltip has to keep them apart. The first says the place
@@ -2697,7 +2612,6 @@ function trendArrow(g){
 
 function currentEntity(){
   const v = S.view;
-  if(v.level==='city')    return {name:v.city, key:v.iso+':'+v.city, rec:SEED.cities[v.iso+':'+v.city], label:t('sel.city')};
   if(v.level==='admin1')  return {name:v.region, key:v.iso+':'+v.region, rec:SEED.admin1[v.iso+':'+v.region], label:t('sel.state')};
   if(v.level==='country'){
     const f = S.countries?.features.find(x=>isoOf(x)===v.iso);
@@ -3146,15 +3060,92 @@ function feedRows(){
         asOf:d.asOf, cases:d.cases, routine:!!d.routine });
     });
   }
-  for(const [key, rec] of Object.entries(SEED.cities || {})){
-    const [iso, city] = key.split(':');
-    (rec.diseases || []).forEach(d=>{
-      rows.push({ level:'city', iso, place:city, region:null, key,
-        name:d.name, sev:diseaseSeverity(d) ?? entitySeverity(rec),
-        asOf:d.asOf, cases:d.cases, routine:!!d.routine });
-    });
-  }
   return rows;
+}
+
+/* The rail shows one of three things. Reports is the log, Changes is what
+   moved since last week, Gaps is where nobody is reporting. The filters only
+   belong to the log, so they come and go with it. */
+function renderRail(){
+  const tab = S.railTab || 'reports';
+  $('#controls').style.display = tab === 'reports' ? '' : 'none';
+  $('#spine').style.display    = tab === 'reports' ? '' : 'none';
+  document.querySelectorAll('#railtabs button')
+    .forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  const head = $('#rail .railhead h2');
+  if(head) head.textContent = t(tab === 'reports' ? 'rail.reports'
+                              : tab === 'changes' ? 'tab.changes' : 'tab.gaps');
+
+  if(tab === 'reports'){ renderFeed(); return; }
+  if(tab === 'changes'){ renderChanges(); return; }
+  renderGaps();
+}
+
+function renderChanges(){
+  const box = $('#feedlist');
+  const rows = changeRows();
+
+  if(!rows){
+    box.innerHTML = `<div class="railnote">${esc(t('chg.waiting'))}</div>`;
+    $('#feedcount').textContent = '';
+    return;
+  }
+  $('#feedcount').textContent = rows.length;
+  if(!rows.length){
+    box.innerHTML = `<div class="railnote">${esc(t('chg.none'))}</div>`;
+    return;
+  }
+
+  const arrow = { up:'▲', down:'▼', appeared:'+', quiet:'·', newDisease:'+' };
+  const hex   = k => k === 'up' || k === 'appeared' || k === 'newDisease' ? PAL.bad
+                   : k === 'down' ? PAL.ok : PAL.dim;
+
+  box.innerHTML =
+    `<div class="railnote" style="padding:12px 16px 10px">${
+       esc(t('chg.title', {date:S.baselineDate}))}</div>` +
+    rows.map(r => `
+      <div class="gitem">
+        <div class="when" style="color:${hex(r.kind)}">${arrow[r.kind]}${
+          r.kind === 'up' || r.kind === 'down' ? Math.abs(r.delta) : ''}</div>
+        <div>
+          <div class="what">${esc(r.disease ? `${r.disease} — ${r.name}` : r.name)}</div>
+          <div class="sub">${
+            r.kind === 'newDisease' ? esc(t('chg.new')) + ' · ' + esc(tierLabel(r.now))
+            : r.kind === 'appeared' ? esc(t('chg.appeared')) + ' · ' + esc(tierLabel(r.now))
+            : r.kind === 'quiet'    ? esc(t('chg.quiet'))
+            : esc(tierLabel(r.was)) + ' → ' + esc(tierLabel(r.now)) + ' · ' + esc(t('chg.' + r.kind))
+          }</div>
+        </div>
+      </div>`).join('');
+}
+
+function renderGaps(){
+  const box = $('#feedlist');
+  const rows = gapRows();
+  $('#feedcount').textContent = rows.length;
+
+  if(!rows.length){
+    box.innerHTML = `<div class="railnote">${esc(t('gap.none'))}</div>`;
+    return;
+  }
+  box.innerHTML =
+    `<div class="railnote" style="padding:12px 16px 10px">${esc(t('gap.intro'))}</div>` +
+    rows.map(r => {
+      const never = r.days === Infinity || r.days == null;
+      return `
+      <div class="gitem">
+        <div class="when" style="color:${never ? PAL.dim : PAL.bad}">${
+          never ? '—' : ago(r.days, true)}</div>
+        <div>
+          <div class="what">${esc(r.name)}</div>
+          <div class="sub">${
+            never ? esc(t('gap.never'))
+                  : esc(t('gap.title')) + ' ' + esc(ago(r.days, true)) +
+                    (r.last ? ' · ' + esc(t('gap.last', {src:String(r.last).split(/ [-—] |:/)[0].trim()})) : '')
+          }</div>
+        </div>
+      </div>`;
+    }).join('');
 }
 
 function renderFeed(){
@@ -3266,7 +3257,6 @@ function renderCrumbs(){
     out.push({t:f?nameOf(f):v.iso, fn:()=>selectCountry(v.iso), now:v.level==='country'});
   }
   if(v.region) out.push({t:v.region, now:v.level==='admin1'});
-  if(v.city)   out.push({t:v.city, now:true});
   const c = $('#crumbs'); c.innerHTML = '';
   out.forEach((o,i)=>{
     if(i) c.insertAdjacentHTML('beforeend','<span class="sep">›</span>');
@@ -3284,9 +3274,7 @@ function zoomHint(){
   if(S._a1failed) return t('zoom.statesMissing');
   const lod = currentLOD();
   if(lod === 'world')  return `${t('zoom.countries')} · ${t('zoom.nextStates')}`;
-  if(lod === 'region') return S.admin1 ? `${t('zoom.states')} · ${t('zoom.nextCities')}`
-                                       : `${t('zoom.states')} · ${t('zoom.loading')}…`;
-  return S.cities ? t('zoom.cities') : `${t('zoom.cities')} · ${t('zoom.loading')}…`;
+  return S.admin1 ? t('zoom.states') : `${t('zoom.states')} · ${t('zoom.loading')}…`;
 }
 
 function renderLabels(){
@@ -3294,25 +3282,18 @@ function renderLabels(){
   const lod = currentLOD();
   let list = [];
 
-  if(lod === 'city' && S.cities){
-    // Only label the tiers that have faded in, and cap the count, so the
-    // view never turns into a wall of text. Tier 0 = capitals + megacities.
-    const c = fadeIn(cam.z, FADE.city.hi, FADE.city.lo);
-    const maxTier = cam.z < 1.45 ? 2 : (cam.z < 1.65 ? 1 : 0);
-    if(c > 0.15){
-      list = S.cities
-        .filter(x => x[3] <= maxTier)
-        .slice(0, 400)
-        /* A city's own record if it has one, otherwise the region it sits in,
-           which is the same borrowing the tooltip names out loud. It stops at
-           the region: a national figure spread over every city in the country
-           would colour a thousand dots from one number. */
-        .map(x => ({
-          name:x[0], lat:x[2], lon:x[1], city:true,
-          sev: S.entities.get(x[4] + ':' + x[0])?.sev
-            ?? S.entities.get(x[4] + ':' + x[5])?.sev
-            ?? null
-        }));
+  /* Close in, country names are useless: you are looking at four of them and
+     their centroids are off screen. Removing the city tier left this zoom
+     with nothing written on it at all, so it names regions instead, which is
+     what you are actually looking at by then. */
+  if(lod === 'region' && cam.z < LABEL_REGIONS_BELOW && S.admin1){
+    for(const [iso, regions] of Object.entries(S.admin1)){
+      if(!SEED.countries[iso] && !S.reportsByRegion?.has(iso)) continue;
+      for(const [name, rings] of regions){
+        const c = centroidOfFlat(rings);
+        list.push({ name, lat:c.lat, lon:c.lon,
+                    sev: S.entities.get(iso + ':' + name)?.sev ?? null });
+      }
     }
   } else if(lod !== 'world' && S.countries){
     list = S.countries.features
@@ -3354,7 +3335,7 @@ function refresh(){
     lastLOD = lod; lastFocus = S.view.iso; S.lod = lod;
     paint(); rebuildBorders();
   }
-  renderCrumbs(); renderInfo(); renderFeed(); renderSpine();
+  renderCrumbs(); renderInfo(); renderRail(); renderSpine();
 }
 
 function note(msg){
@@ -3404,6 +3385,10 @@ function bindUI(){
   // filters
   $('#thr').oninput = e=>{ S.threshold = +e.target.value; $('#thrval').textContent = e.target.value; renderFeed(); renderSpine(); };
   $('#showroutine').onchange = e=>{ S.showRoutine = e.target.checked; renderFeed(); };
+  document.querySelectorAll('#railtabs button').forEach(b=>{
+    b.onclick = ()=>{ S.railTab = b.dataset.tab; renderRail(); };
+  });
+
   document.querySelectorAll('#feedsort button').forEach(b=>{
     b.onclick = ()=>{
       document.querySelectorAll('#feedsort button').forEach(x=>x.classList.remove('on'));
@@ -3452,6 +3437,197 @@ function progress(p, key){
   } else if(key){
     btn.querySelector('span').textContent = t(key);
   }
+}
+
+/* ── THE PAST ─────────────────────────────────────────────────────────────
+   A GitHub Action commits one snapshot a day into data/history. Each holds
+   raw records, not severities, so the page can apply today's rules to an
+   older day and get a comparison that reflects the world rather than
+   whatever the scoring happened to be that week.
+
+   Everything here fails quietly. The history is an extra, and a map that
+   cannot reach it is still a map. */
+const BASELINE_DAYS = 7;
+
+async function loadHistory(){
+  try{
+    const idx = await (await fetch('data/history/index.json', {cache:'no-store'})).json();
+    if(!Array.isArray(idx) || !idx.length) return;
+    S.historyDates = idx;
+
+    // the snapshot nearest a week back, whatever days the Action actually ran
+    const target = Date.now() - BASELINE_DAYS * 86400000;
+    let best = null, bestGap = Infinity;
+    for(const d of idx){
+      const gap = Math.abs(new Date(d + 'T12:00:00Z').getTime() - target);
+      if(gap < bestGap){ bestGap = gap; best = d; }
+    }
+    // a snapshot from this morning is not a baseline, it is today
+    if(!best || Math.abs(Date.now() - new Date(best + 'T12:00:00Z').getTime()) < 2*86400000) return;
+
+    S.baselineDate = best;
+    S.baseline = await (await fetch('data/history/' + best + '.json')).json();
+  }catch(e){
+    S.historyFailed = true;
+  }
+}
+
+/* A snapshot stores each record as a handful of one-letter keys. Back to the
+   shape the scoring expects. */
+function expandRecords(list){
+  return (list || []).map(o => ({
+    name:o.n, severity:o.s ?? null, cases:o.c ?? null, deaths:o.d ?? null,
+    per100k:o.p ?? null, cfr:o.f ?? null, growth7d:o.g ?? null,
+    asOf:o.a || null, routine:!!o.r
+  }));
+}
+
+/* Rebuilds country severities from a snapshot, by the same path buildEntities
+   takes: derive the rates, withhold the impossible ones, roll the regions up,
+   let a disease the regions never watched count on its own. */
+function scoreSnapshot(snap){
+  const countries = {}, admin1 = {};
+  for(const [k,v] of Object.entries(snap.countries || {}))
+    countries[k] = { pop:v.p, diseases:expandRecords(v.d) };
+  for(const [k,v] of Object.entries(snap.admin1 || {}))
+    admin1[k]    = { pop:v.p, diseases:expandRecords(v.d) };
+
+  for(const [iso, rec] of Object.entries(countries)){
+    const pop = S.byISO.get(iso)?.pop;
+    if(!pop || pop < 1000) continue;
+    for(const d of rec.diseases){
+      if(d.cases == null) continue;
+      if(d.cases / pop > MAX_PLAUSIBLE_ATTACK_RATE){ d.cases = null; d.per100k = null; continue; }
+      if(d.per100k == null) d.per100k = +(d.cases / pop * 100000).toFixed(2);
+    }
+  }
+
+  const regionsOf = new Map(), coveredOf = new Map();
+  for(const [k, rec] of Object.entries(admin1)){
+    const iso = k.split(':')[0];
+    for(const d of rec.diseases){
+      if(!coveredOf.has(iso)) coveredOf.set(iso, new Set());
+      coveredOf.get(iso).add(diseaseKey(d.name));
+    }
+    const sev = entitySeverity(rec);
+    if(sev == null) continue;
+    if(!regionsOf.has(iso)) regionsOf.set(iso, []);
+    regionsOf.get(iso).push({ severity: sev, pop: rec.pop || 1 });
+  }
+
+  const sev = new Map(), named = new Map();
+  for(const [iso, rec] of Object.entries(countries)){
+    sev.set(iso, countrySeverity(rec, regionsOf.get(iso), coveredOf.get(iso)));
+    named.set(iso, new Set(rec.diseases.map(d => diseaseKey(d.name))));
+  }
+  for(const [iso, kids] of regionsOf) if(!sev.has(iso)) sev.set(iso, majorityOf(kids));
+  return { sev, named };
+}
+
+/* What moved. Tier changes only: a country drifting from 41 to 44 is noise,
+   and a list that reports noise stops being read. */
+function changeRows(){
+  if(!S.baseline) return null;
+  /* Both sides are scored against the same clock, today's. It is tempting to
+     score the old snapshot as of its own date, which sounds more faithful and
+     is in fact the bug: records decay with age, so a record nobody has touched
+     scores a little higher on the older date purely because it was younger
+     then, and the list fills with countries that "eased" when all that moved
+     was the calendar. One clock means an unchanged record cancels out and only
+     a change in the data survives. */
+  const then = scoreSnapshot(S.baseline);
+  const rows = [];
+
+  for(const [iso, e] of S.entities){
+    if(iso.includes(':') || iso.startsWith('C:')) continue;
+    const was = then.sev.has(iso) ? then.sev.get(iso) : null;
+    const now = e.sev;
+    const ti = tierIndex(was), tj = tierIndex(now);
+    if(ti === tj) continue;
+
+    rows.push({
+      kind: was == null ? 'appeared' : now == null ? 'quiet' : tj > ti ? 'up' : 'down',
+      iso, name:countryName(iso), was, now,
+      delta: (now ?? 0) - (was ?? 0)
+    });
+  }
+
+  // diseases reported in a country for the first time this week
+  for(const [iso, rec] of Object.entries(SEED.countries)){
+    const before = then.named.get(iso);
+    if(!before) continue;                       // the country itself is new, already listed
+    for(const d of rec.diseases || []){
+      if(before.has(diseaseKey(d.name))) continue;
+      if(d.routine) continue;                   // routine surveillance churns names weekly
+      const s = diseaseSeverity(d);
+      if(s == null) continue;
+      rows.push({ kind:'newDisease', iso, name:countryName(iso), disease:d.name, now:s, was:null, delta:s });
+    }
+  }
+
+  const rank = { up:0, appeared:1, newDisease:2, down:3, quiet:4 };
+  rows.sort((a,b) => (rank[a.kind] - rank[b.kind]) || Math.abs(b.delta) - Math.abs(a.delta));
+  return rows;
+}
+
+/* ── THE BLIND SPOTS ──────────────────────────────────────────────────────
+   The other half of knowing what is happening is knowing where you cannot
+   see. A country reporting nothing looks identical on a map to a country
+   with nothing to report, and they are not the same thing at all. */
+const GAP_DAYS = 90;
+
+/* Natural Earth's 110m basemap leaves out twenty small states and territories
+   that the feeds do report on, so looking a name up by code comes back empty
+   and the lists end up reading "REU" at an agency that knows perfectly well
+   what Réunion is. These are the only gaps, filled by hand. */
+const ISO_NAME_FALLBACK = {
+  REU:'Réunion', MYT:'Mayotte', CYM:'Cayman Islands', MLT:'Malta', BHR:'Bahrain',
+  BRB:'Barbados', DMA:'Dominica', GLP:'Guadeloupe', GRD:'Grenada', GUF:'French Guiana',
+  HKG:'Hong Kong SAR', LCA:'Saint Lucia', LIE:'Liechtenstein', MDV:'Maldives',
+  MUS:'Mauritius', SGP:'Singapore', SYC:'Seychelles', COM:'Comoros',
+  VCT:'Saint Vincent and the Grenadines', MHL:'Marshall Islands'
+};
+function countryName(iso){
+  return S.byISO.get(iso)?.name || ISO_NAME_FALLBACK[iso] || iso;
+}
+
+function gapRows(){
+  const rows = [], covered = new Set();
+
+  /* Routine weekly surveillance counts here. It is background noise for the
+     report log, which is why that hides it, but a country filing a flu return
+     every week is a country that is reporting, and calling it a blind spot
+     would put two thirds of the world on this list and make it useless. */
+  for(const [iso, rec] of Object.entries(SEED.countries)){
+    covered.add(iso);
+    const ds = rec.diseases || [];
+    const ages = ds.map(d => ageDays(d.asOf)).filter(v => v != null);
+    if(!ages.length){ rows.push({ iso, name:countryName(iso), days:null, last:null }); continue; }
+    const freshest = Math.min(...ages);
+    if(freshest <= GAP_DAYS) continue;
+    const d = ds.find(x => ageDays(x.asOf) === freshest);
+    rows.push({ iso, name:countryName(iso), days:freshest, last:d ? d.source : null });
+  }
+
+  /* Countries the collector has never once mentioned. The population floor
+     keeps out the uninhabited and the near-enough: nobody at WHO needs to be
+     told that the French Southern and Antarctic Lands filed no outbreak
+     report this week. */
+  if(S.countries) for(const f of S.countries.features){
+    const iso = isoOf(f);
+    if(!iso || covered.has(iso) || iso === 'ATA') continue;
+    if((f.properties.POP_EST || 0) < 250000) continue;
+    rows.push({ iso, name:nameOf(f), days:Infinity, last:null });
+  }
+
+  /* Gone quiet first, worst first. A country that used to report and stopped
+     is a question someone can go and ask; one that has never appeared is a
+     standing fact about coverage. */
+  return rows.sort((a,b) => {
+    const an = a.days === Infinity || a.days == null, bn = b.days === Infinity || b.days == null;
+    if(an !== bn) return an ? 1 : -1;
+    return (b.days ?? 0) - (a.days ?? 0);
+  });
 }
 
 /* Live figures, or the bundled fallback when the collector is unreachable.
@@ -3510,10 +3686,12 @@ async function boot(){
 
   progress(100);
 
-  // Pull the state and city datasets straight away, in the background, so
-  // there's no stall the first time someone zooms in.
+  // Pull the state dataset straight away, in the background, so there's no
+  // stall the first time someone zooms in.
   ensureAdmin1();
-  ensureCities();
+
+  // and the history, which only the Changes tab needs and nothing waits on
+  loadHistory().then(() => { if(S.railTab === 'changes') renderRail(); });
 
   const age = Math.round((Date.now()-new Date(SEED.updated))/86400000);
   if(age > 7) note(t('note.old', {n:age}));
