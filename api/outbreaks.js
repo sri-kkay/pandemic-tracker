@@ -23,6 +23,7 @@
      §4k EMRO country weekly sitreps    Afghanistan, read out of the weekly
                                         PDF the country office publishes
      §4l WHO AFRO weekly bulletin       all 47 African Region countries
+     §4m Paraguay MSPBS/DGVS bulletin   Paraguay, national and by department
      §4m the press wire                 an open web search, allowlisted,
                                         corroborated, and never numeric
 
@@ -2172,6 +2173,17 @@ function diseaseNearby(text, index, back = 700){
 }
 
 /* ISO week -> the Sunday that ends it, for reports that only give a week number */
+/* PAHO and CDC epidemiological weeks run Sunday to Saturday, and week 1 is
+   the one containing 4 January. ISO weeks run Monday to Sunday, which in 2026
+   puts them a week out: the DGVS bulletin headed "Semana Epidemiológica 40"
+   covers 04 to 10 October, where isoWeekEnd returns the 4th. Both Latin
+   American sources number their weeks the PAHO way, so they use this. */
+function epiWeekEnd(year, week){
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const week1Sunday = new Date(jan4.getTime() - jan4.getUTCDay() * 86400000);
+  return new Date(week1Sunday.getTime() + ((week - 1) * 7 + 6) * 86400000);
+}
+
 function isoWeekEnd(year, week){
   const jan4 = new Date(Date.UTC(year, 0, 4));
   const dow = (jan4.getUTCDay() + 6) % 7;                 // Monday = 0
@@ -3186,6 +3198,1140 @@ async function net(url, options = {}, maxMs = 12000){
   }
 }
 
+/* ═══ 4m. SOURCE: PARAGUAY DGVS WEEKLY BULLETIN ═══════════════════════════
+   https://dgvs.mspbs.gov.py/boletin-epidemiologico-semanal/
+
+   Paraguay's Dirección General de Vigilancia de la Salud publishes a weekly
+   bulletin covering roughly twenty-five notifiable diseases, with tables
+   broken down by department. Until now the whole country was represented on
+   this map by a single routine influenza line from FluNet, four cases, which
+   is a poor showing for a ministry that publishes this much.
+
+   Three things about this source are worth writing down, because each one is
+   a way to get the numbers wrong.
+
+   FIRST, Spanish writes a thousands separator as a full stop. "1.364 casos"
+   is one thousand three hundred and sixty-four, and parseInt stops at the dot
+   and returns 1. Every count in the bulletin above a thousand would have been
+   silently divided by itself.
+
+   SECOND, the department tables carry two case-like columns: Notificaciones,
+   which is everyone who turned up suspected, and N° de casos, which is the
+   confirmed and probable ones. Nationally those read 10,894 and 293. Taking
+   the first would overstate dengue in Paraguay by a factor of thirty-seven.
+
+   THIRD, the tables come out of the PDF as a bare run of numbers with no
+   headers attached, so there is nothing in the text itself to say which
+   column is which. What makes it checkable is the third column: the printed
+   incidence per 100,000 is computed from notifications, not cases. Asunción
+   reads 2203, 103, 478, and 2203 over its population is 479. So the row can
+   verify itself, and a row whose arithmetic does not work out is thrown away
+   rather than guessed at.                                                  */
+
+const PY_INDEX = 'https://dgvs.mspbs.gov.py/boletin-epidemiologico-semanal/';
+const PY_MAX_AGE_DAYS = 45;
+const PY_FOLLOW_LIMIT = 3;
+
+/* Departments as Natural Earth spells them, with the shortenings the bulletin
+   actually uses on the left. "Pte. Hayes" is the bulletin's own abbreviation. */
+const PY_DEPARTMENTS = {
+  'concepcion':'Concepción', 'san pedro':'San Pedro', 'cordillera':'Cordillera',
+  'guaira':'Guairá', 'caaguazu':'Caaguazú', 'caazapa':'Caazapá',
+  'itapua':'Itapúa', 'misiones':'Misiones', 'paraguari':'Paraguarí',
+  'alto parana':'Alto Paraná', 'central':'Central', 'neembucu':'Ñeembucú',
+  'amambay':'Amambay', 'canindeyu':'Canindeyú', 'pte hayes':'Presidente Hayes',
+  'pdte hayes':'Presidente Hayes', 'presidente hayes':'Presidente Hayes',
+  'boqueron':'Boquerón', 'alto paraguay':'Alto Paraguay', 'asuncion':'Asunción'
+};
+
+/* 2023 census, used only to check a row's own arithmetic. These never become
+   figures on the map, so being a little out of date costs nothing. */
+const PY_POP = {
+  'Concepción':250000, 'San Pedro':400000, 'Cordillera':300000, 'Guairá':220000,
+  'Caaguazú':560000, 'Caazapá':190000, 'Itapúa':600000, 'Misiones':130000,
+  'Paraguarí':250000, 'Alto Paraná':830000, 'Central':2200000, 'Ñeembucú':85000,
+  'Amambay':180000, 'Canindeyú':230000, 'Presidente Hayes':135000,
+  'Boquerón':85000, 'Alto Paraguay':20000, 'Asunción':460000
+};
+
+/* The bulletin's wording, mapped onto the names the guidance library uses so
+   the drawer has something to show. Longest first: "leishmaniasis visceral"
+   has to win over "leishmaniasis". */
+const PY_DISEASES = [
+  ['leishmaniasis visceral',            'Leishmaniasis'],
+  ['leishmaniasis tegumentaria',        'Leishmaniasis'],
+  ['fiebre amarilla',                   'Yellow fever'],
+  ['virus del nilo occidental',         'West Nile fever'],
+  ['sindrome respiratorio agudo grave', 'Acute respiratory infection'],
+  ['enfermedad meningococica',          'Meningococcal disease'],
+  ['meningitis bacteriana',             'Meningococcal disease'],
+  ['exposicion humana a virus rabico',  'Rabies'],
+  ['rabia humana',                      'Rabies'],
+  ['rabia animal',                      'Rabies'],
+  ['rabia',                             'Rabies'],
+  ['virus respiratorio sincitial',      'Respiratory syncytial virus'],
+  ['tos convulsa',                      'Pertussis'],
+  ['tos ferina',                        'Pertussis'],
+  ['coqueluche',                        'Pertussis'],
+  ['chikungunya',                       'Chikungunya'],
+  ['leptospirosis',                     'Leptospirosis'],
+  ['parotiditis',                       'Mumps'],
+  ['hantavirus',                        'Hantavirus'],
+  ['brucelosis',                        'Brucellosis'],
+  ['difteria',                          'Diphtheria'],
+  ['sarampion',                         'Measles'],
+  ['rubeola',                           'Rubella'],
+  ['covid-19',                          'COVID-19'],
+  ['covid 19',                          'COVID-19'],
+  ['influenza',                         'Influenza'],
+  ['dengue',                            'Dengue'],
+  ['malaria',                           'Malaria'],
+  ['paludismo',                         'Malaria'],
+  ['colera',                            'Cholera'],
+  ['poliomielitis',                     'Polio'],
+  ['zika',                              'Zika virus disease'],
+  ['chagas',                            'Chagas disease'],
+  ['varicela',                          'Chickenpox'],
+  ['tuberculosis',                      'Tuberculosis'],
+  ['irag',                              'Acute respiratory infection']
+];
+
+/* Accents off, punctuation flattened, so one spelling matches all of them. */
+function esFold(s){
+  return String(s || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s.,%()-]/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+}
+
+const ES_WORDS = {
+  cero:0, un:1, uno:1, una:1, dos:2, tres:3, cuatro:4, cinco:5, seis:6,
+  siete:7, ocho:8, nueve:9, diez:10, once:11, doce:12, trece:13, catorce:14,
+  quince:15, dieciseis:16, diecisiete:17, dieciocho:18, diecinueve:19, veinte:20
+};
+
+/* A Spanish number. The full stop groups thousands and the comma marks a
+   decimal, which is the exact opposite of the rest of this file. */
+function esNum(raw){
+  if(raw == null) return null;
+  const s = esFold(raw);
+  if(ES_WORDS[s] != null) return ES_WORDS[s];
+
+  let digits;
+  if(/^\d{1,3}(\.\d{3})+$/.test(s))      digits = s.replace(/\./g, '');   // 10.896
+  else if(/^\d+(,\d+)?$/.test(s))        digits = s.split(',')[0];        // 1,5 -> 1
+  else                                   return null;
+
+  const n = parseInt(digits, 10);
+  return Number.isFinite(n) && n >= 0 && n < 10000000 ? n : null;
+}
+
+const ES_NUM_RE = '([0-9]{1,3}(?:\\.[0-9]{3})+|[0-9]+(?:,[0-9]+)?'
+                + '|cero|una|uno|un|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez'
+                + '|once|doce|trece|catorce|quince|dieciseis|diecisiete|dieciocho|diecinueve|veinte)';
+
+/* How the bulletin says a thing happened. Stems rather than whole words,
+   because the same verb turns up as registran, registró, se registraron and
+   se han registrado, and matching is done on the accent-folded text so
+   "registró" and "registro" are one thing. */
+const ES_VERB = '(?:se\\s+(?:han\\s+|ha\\s+)?)?'
+              + '(?:registr\\w*|notific\\w*|report\\w*|confirm\\w*|identific\\w*'
+              + '|hospitaliz\\w*|acumul\\w*|total(?:iza\\w*)?)';
+
+const PY_CASE_RE  = new RegExp(ES_VERB + '[^.;]{0,40}?' + ES_NUM_RE
+  + '\\s*(?:\\([^)]*\\)\\s*)?(?:nuevos?\\s+|nuevas?\\s+)?'
+  + '(?:casos?|notificaciones|hospitalizaciones|hospitalizados)\\b', 'i');
+
+const PY_DEATH_RE = new RegExp(ES_NUM_RE
+  + '\\s*(?:\\([^)]*\\)\\s*)?(?:fallecidos?|defunciones?|muertes?)\\b', 'i');
+
+const PY_NO_DEATHS = /no\s+se\s+registran?\s+fallecidos/i;
+
+/* Exactly one disease, or none. "No se registran fallecidos por Dengue,
+   Chikungunya, Zika" names three and belongs to no single one of them, and
+   attributing it to whichever happened to match first would put a zero
+   against two diseases that never claimed it. */
+function esDisease(text){
+  const f = esFold(text);
+  const hits = new Set();
+  for(const [needle, canonical] of PY_DISEASES) if(f.includes(needle)) hits.add(canonical);
+  return hits.size === 1 ? [...hits][0] : null;
+}
+
+
+
+/* ─── reading the bulletin without line breaks ──────────────────────────────
+   pdfText() ends with .replace(/\s+/g, ' '), which is right for prose and
+   fatal for tables: the whole fifty-three page bulletin arrives as a single
+   line. The first version of this parser split on newlines to find table
+   rows, found one row, and returned nothing at all — it would have shipped a
+   Paraguay with no data while every test passed, because the tests were
+   written against a reconstruction that still had its line breaks.
+
+   So nothing here splits on lines. Each table is read by anchoring on a label
+   and taking the numbers that follow it, and every row is checked against the
+   incidence rate printed beside it before it is believed. */
+
+const PY_INT  = '\\d{1,3}(?:\\.\\d{3})+|\\d+';
+/* A rate reads 4,54 or 26,54 or 1354,06. The integer part is only dot-grouped
+   once it passes a thousand, and the first version of this pattern allowed at
+   most three leading digits, so "1354,06" never matched and dengue — the one
+   disease this bulletin exists to report — dropped out of the table while
+   every other row parsed cleanly. */
+const PY_RATE = '(?:\\d{1,3}(?:\\.\\d{3})+|\\d+)(?:,\\d+)?';
+const PY_POP_TOTAL = 6460000;              // implied by the bulletin's own rates
+
+/* A full stop is a thousands separator between digits and punctuation
+   everywhere else. "Pte. Hayes 304 16 225" has to lose its stop so the
+   department matches, while "10.894" has to keep it. */
+function pyFlat(text){
+  return esFold(text).replace(/(?<![0-9])\.(?![0-9])/g, ' ').replace(/\s+/g, ' ');
+}
+
+function pyRate(raw){
+  if(raw == null) return null;
+  const n = parseFloat(String(raw).replace(/\./g, '').replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
+}
+
+function reEscape(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+/* ── Table 7: dengue by department ──────────────────────────────────────────
+   Three columns: Notificaciones (everyone suspected), N° de casos (confirmed
+   plus probable), and the cumulative incidence per 100,000. The incidence is
+   computed from notifications, not cases, so the row can check itself:
+   Asunción reads 2203, 103, 478, and 2203 over its population is 479. A row
+   whose arithmetic does not work out is dropped rather than guessed at. */
+function parsePYDepartments(text, disease){
+  const flat = pyFlat(text);
+  const out = [];
+
+  for(const [needle, name] of Object.entries(PY_DEPARTMENTS)){
+    const pop = PY_POP[name];
+    if(!pop) continue;
+
+    const re = new RegExp('\\b' + reEscape(needle) +
+      '\\s+(' + PY_INT + ')\\s+(' + PY_INT + ')\\s+(' + PY_INT + ')\\b', 'g');
+
+    let m;
+    while((m = re.exec(flat))){
+      const notifications = esNum(m[1]);
+      const cases         = esNum(m[2]);
+      const incidence     = esNum(m[3]);
+      if(notifications == null || cases == null || !incidence) continue;
+      if(cases > notifications) continue;                  // confirmed cannot exceed suspected
+
+      const ratio = (notifications / pop * 100000) / incidence;
+      if(!(ratio > 0.6 && ratio < 1.7)) continue;          // columns are not where we think
+
+      out.push({ dept: name, cases, notifications, disease });
+      break;                                               // first row that checks out wins
+    }
+  }
+  return out;
+}
+
+/* ── Table 1: every notifiable event ────────────────────────────────────────
+   Thirty-odd diseases, each with three year-pairs: 2024 count and rate, 2025
+   count and rate, 2026 count and rate. We want the last pair.
+
+   Only labels that sit inline with their numbers are listed here. The table
+   also has merged row-group cells — Leishmaniosis splits into "Visceral" and
+   "Tegumentaria", Chagas into "Agudo" and "Crónico" — and the extractor emits
+   those group names in a heap at the bottom of the page, far from the rows
+   they belong to. There is no safe way to reattach them, so they are left
+   out rather than guessed at and mislabelled.
+
+   Every row is checked against its own printed rate before it is believed. */
+const PY_TABLE1 = [
+  ['dengue',                      'Dengue'],
+  ['chikungunya',                 'Chikungunya'],
+  ['zika',                        'Zika'],
+  ['fiebre amarilla',             'Yellow fever'],
+  ['poliomielitis',               'Polio'],
+  ['sarampion',                   'Measles'],
+  ['rubeola',                     'Rubella'],
+  ['tetanos otras edades (toe)',  'Tetanus'],
+  ['tos convulsa',                'Pertussis'],
+  ['parotiditis',                 'Mumps'],
+  ['varicela',                    'Chickenpox'],
+  ['difteria',                    'Diphtheria'],
+  ['colera',                      'Cholera'],
+  ['sx pulmonar por hantavirus',  'Hantavirus'],
+  ['rabia humana',                'Rabies'],
+  ['fiebre tifoidea',             'Typhoid fever'],
+  ['sars-cov-2 (covid-19)',       'COVID-19'],
+  ['peste',                       'Plague'],
+  ['brucelosis',                  'Brucellosis'],
+  ['leptospirosis',               'Leptospirosis']
+];
+
+function parsePYTable1(text){
+  const flat = pyFlat(text);
+  const out = [];
+
+  for(const [needle, name] of PY_TABLE1){
+    const re = new RegExp('\\b' + reEscape(needle) + '\\s+' +
+      '(' + PY_INT + ')\\s+(' + PY_RATE + ')\\s+' +
+      '(' + PY_INT + ')\\s+(' + PY_RATE + ')\\s+' +
+      '(' + PY_INT + ')\\s+(' + PY_RATE + ')', 'g');
+
+    let m;
+    while((m = re.exec(flat))){
+      const cases = esNum(m[5]);
+      const rate  = pyRate(m[6]);
+      if(cases == null || rate == null) continue;
+
+      /* The rate is the row's own checksum. Small counts are dominated by the
+         rounding of a two-decimal rate, so the tolerance never drops below a
+         couple of cases. */
+      const expected = rate / 100000 * PY_POP_TOTAL;
+      if(Math.abs(expected - cases) > Math.max(2, cases * 0.15)) continue;
+
+      out.push({ disease: name, cases, rate });
+      break;
+    }
+  }
+  return out;
+}
+
+function parsePYBulletin(text){
+  const period = pyPeriod(text) || {};
+  const weeks  = period.week && period.week > 0 ? period.week : 40;
+
+  /* Table 1 counts run from SE 01 to the current week, so they are a season
+     to date and not a weekly figure. Publishing them raw would do to Paraguay
+     what the frozen PAHO feed does to Brazil. They are divided by the number
+     of weeks elapsed to give an average weekly rate, which is the thing every
+     other record on this map is measured in. */
+  const national = [];
+  for(const r of parsePYTable1(text)){
+    if(!r.cases) continue;                                 // a confirmed zero is not an outbreak
+    national.push({
+      disease: r.disease,
+      cases: r.cases,
+      deaths: null,
+      cumulativeRate: r.rate,
+      per100k: +(r.rate / weeks).toFixed(3),
+      weeks
+    });
+  }
+
+  const departments = [];
+  for(const disease of ['Dengue']){
+    const rows = parsePYDepartments(text, disease);
+    if(rows.length >= 8) departments.push(...rows);        // a partial table is a bad parse
+  }
+
+  return { national, departments };
+}
+
+
+/* The bulletin prints its own week on page one:
+   "Semana Epidemiológica 40 de 2026, del 04 al 10 de octubre". */
+function pyPeriod(text){
+  const m = esFold(text.slice(0, 4000))
+    .match(/semana\s+epidemiologica\s*(?:n[o°.]?\s*)?(\d{1,2})\s*(?:de|\/|-)?\s*(20\d{2})/);
+  if(!m) return null;
+  return { week: +m[1], year: +m[2] };
+}
+
+function looksLikePYBulletin(text){
+  const head = esFold(text.slice(0, 4000));
+  return head.includes('boletin epidemiologico') &&
+         (head.includes('paraguay') || head.includes('dgvs') || head.includes('vigilancia de la salud'));
+}
+
+async function fetchPY(){
+  const notes = [];
+
+  const res = await net(PY_INDEX, { headers:{ 'user-agent':UA } }, 12000);
+  if(!res.ok) throw new Error('index returned HTTP ' + res.status);
+  const html = await res.text();
+
+  /* Every edition is on one page under a year heading, and the filenames are
+     not predictable in the slightest: SE-40-2026.pdf, SE-39-2026-1.pdf,
+     SE36-_-BOLETIN-EPIDEMIOLOGICO.pdf. So they are read off the page rather
+     than constructed, newest first by the week in the link text. */
+  const links = [];
+  const re = /href="([^"]+\.pdf)"[^>]*>([^<]{0,120})/gi;
+  let m;
+  while((m = re.exec(html))){
+    const url = m[1].startsWith('http') ? m[1] : new URL(m[1], PY_INDEX).href;
+    if(!/dgvs\.mspbs\.gov\.py/i.test(url)) continue;
+    const label = esFold(m[2] + ' ' + url);
+    const wk = label.match(/se[\s_-]*(\d{1,2})[\s_-]*(20\d{2})/) || label.match(/(\d{1,2})[\s_-]*(20\d{2})/);
+    if(!wk) continue;
+    links.push({ url, week:+wk[1], year:+wk[2] });
+  }
+  if(!links.length) throw new Error('no bulletin links found on the index page');
+
+  links.sort((a, b) => (b.year - a.year) || (b.week - a.week));
+
+  let chosen = null, text = null;
+  for(const cand of links.slice(0, PY_FOLLOW_LIMIT)){
+    try{
+      const t = await pdfText(cand.url);
+      if(!looksLikePYBulletin(t)){ notes.push(`${cand.url}: not a DGVS bulletin`); continue; }
+      chosen = cand; text = t; break;
+    }catch(err){
+      notes.push(`${cand.url}: ${err.message}`);
+    }
+  }
+  if(!chosen) throw new Error('no readable bulletin: ' + (notes.join(' | ') || 'none tried'));
+
+  const printed = pyPeriod(text);
+  const week = printed ? printed.week : chosen.week;
+  const year = printed ? printed.year : chosen.year;
+  const asOf = epiWeekEnd(year, week);
+  const ageDays = Math.round((Date.now() - new Date(asOf).getTime()) / 86400000);
+
+  const { national, departments } = parsePYBulletin(text);
+
+  const countries = {}, admin1 = {};
+  if(ageDays <= PY_MAX_AGE_DAYS){
+    /* Every count here is a season total from SE 01, and the rate beside it is
+       the weekly average derived from it. Severity therefore comes from the
+       disease's own floor and from that weekly rate, never from the raw
+       cumulative count: running a forty-week total through the case-count
+       thresholds would colour Paraguay by the calendar rather than by what is
+       actually happening there this month. */
+    for(const r of national){
+      if(!countries.PRY) countries.PRY = { conf:'high', diseases:[] };
+      countries.PRY.diseases.push({
+        name: r.disease,
+        cases: r.cases, deaths: r.deaths, cfr: null,
+        per100k: r.per100k, growth7d: null,
+        severity: floorFor(r.disease),
+        asOf: `${year}-W${String(week).padStart(2,'0')}`,
+        source: `Paraguay MSPBS/DGVS weekly bulletin, SE ${week}/${year} — `
+              + `${r.cases.toLocaleString()} cumulative SE 01 to ${week}, `
+              + `${r.cumulativeRate} per 100,000 for the season so far`,
+        url: chosen.url,
+        provisional: true
+      });
+    }
+    for(const r of departments){
+      const key = 'PRY:' + r.dept;
+      if(!admin1[key]) admin1[key] = { conf:'high', diseases:[] };
+      admin1[key].diseases.push({
+        name: r.disease,
+        cases: r.cases, deaths: null, cfr: null, per100k: null, growth7d: null,
+        severity: floorFor(r.disease),
+        asOf: `${year}-W${String(week).padStart(2,'0')}`,
+        source: `Paraguay MSPBS/DGVS weekly bulletin, SE ${week}/${year} — `
+              + `${r.cases.toLocaleString()} confirmed and probable of `
+              + `${r.notifications.toLocaleString()} notified, cumulative SE 01 to ${week}`,
+        url: chosen.url,
+        provisional: true
+      });
+    }
+  }
+
+  return {
+    countries, admin1, url: chosen.url, week, year, asOf, ageDays,
+    parsedNational: national.length,
+    parsedDepartments: departments.length,
+    published: ageDays <= PY_MAX_AGE_DAYS,
+    datedVia: printed ? 'the bulletin itself' : 'the filename',
+    notes
+  };
+}
+
+
+/* ── Argentina: Boletín Epidemiológico Nacional, weekly news page ─────────
+   Why this source and not the PDF: the Ministry publishes each BEN as a PDF
+   whose filename is unpredictable (ben_831_se_41_vf-271026.pdf), and the PDF
+   directory is closed to automated readers. But every bulletin also gets a
+   companion news page whose URL is built from the week number alone, carries
+   the same headline figures as plain HTML, and is open. So we read that.
+
+     https://www.argentina.gob.ar/noticias/actualizacion-del-boletin-
+     epidemiologico-nacional-de-la-semana-ndeg-41
+
+   Argentina lags about 10 to 13 days, so we walk back from the current ISO
+   week until a page answers. Everything here reuses the Spanish helpers the
+   Paraguay adapter already uses: esFold, esNum, ES_VERB. One Spanish layer,
+   two countries.                                                            */
+
+const AR_NEWS = n =>
+  'https://www.argentina.gob.ar/noticias/actualizacion-del-boletin-'
+  + 'epidemiologico-nacional-de-la-semana-ndeg-' + n;
+
+const AR_MAX_AGE_DAYS = 35;   // past this the figures are hidden, not shown stale
+const AR_LOOKBACK     = 6;    // weeks to walk back before giving up
+const AR_POP          = 46200000;
+
+/* Notified, with nothing confirmed. The frontend discards any record scoring
+   under 3 as no longer saying anything, so this sits just above that line and
+   well inside the contained band: the row survives and carries its
+   notification count into the tooltip, without colouring a jurisdiction as
+   though cases had been found there. */
+const AR_PRESENT_ONLY = 4;
+
+/* Routine year-round surveillance. These carry enormous cumulative counts
+   (ETI passed 1.1 million this season) which are a normal season, not an
+   outbreak. They are flagged routine so measuredSeverity() ignores the raw
+   count, exactly as the ERVISS consultation rates are. Getting this wrong is
+   what once painted Germany and Denmark red on an ordinary winter.          */
+const AR_ROUTINE = new Set([
+  'Influenza-like illness', 'Pneumonia', 'Bronchiolitis'
+]);
+
+const AR_DISEASES = [
+  ['enfermedad tipo influenza',      'Influenza-like illness'],
+  ['eti',                            'Influenza-like illness'],
+  ['neumonia',                       'Pneumonia'],
+  ['bronquiolitis',                  'Bronchiolitis'],
+  ['dengue',                         'Dengue'],
+  ['chikungunya',                    'Chikungunya'],
+  ['zika',                           'Zika'],
+  ['fiebre amarilla',                'Yellow fever'],
+  ['leptospirosis',                  'Leptospirosis'],
+  ['hantavirus',                     'Hantavirus'],
+  ['sarampion',                      'Measles'],
+  ['coqueluche',                     'Pertussis'],
+  ['tos convulsa',                   'Pertussis'],
+  ['fiebre hemorragica argentina',   'Argentine haemorrhagic fever'],
+  ['sindrome uremico hemolitico',    'Haemolytic uraemic syndrome'],
+  ['virus sincicial respiratorio',   'Respiratory syncytial virus'],
+  /* The bulletin writes the full name once and then says VSR for the rest of
+     the page. Without the abbreviation here, the sentinel paragraph — which
+     names influenza, VSR and SARS-CoV-2 in one breath — looked like it named
+     COVID-19 alone, and "8 nuevos casos de VSR" was published as eight cases
+     of COVID-19 in Argentina. With VSR listed the sentence names three
+     diseases and the parser abstains, which is the right answer. */
+  ['vsr',                            'Respiratory syncytial virus'],
+  ['sars-cov-2',                     'COVID-19']
+];
+
+/* The 24 jurisdictions. Keys are folded (lowercase, unaccented) so they match
+   esFold output. Several have more than one spelling in the bulletins.      */
+const AR_PROVINCES = {
+  'caba':'Ciudad Autónoma de Buenos Aires',
+  'ciudad autonoma de buenos aires':'Ciudad Autónoma de Buenos Aires',
+  'provincia de buenos aires':'Buenos Aires',
+  'buenos aires':'Buenos Aires',
+  'catamarca':'Catamarca', 'chaco':'Chaco', 'chubut':'Chubut',
+  'cordoba':'Córdoba', 'corrientes':'Corrientes', 'entre rios':'Entre Ríos',
+  'formosa':'Formosa', 'jujuy':'Jujuy', 'la pampa':'La Pampa',
+  'la rioja':'La Rioja', 'mendoza':'Mendoza', 'misiones':'Misiones',
+  'neuquen':'Neuquén', 'rio negro':'Río Negro', 'salta':'Salta',
+  'san juan':'San Juan', 'san luis':'San Luis', 'santa cruz':'Santa Cruz',
+  'santa fe':'Santa Fe', 'santiago del estero':'Santiago del Estero',
+  'tierra del fuego':'Tierra del Fuego', 'tucuman':'Tucumán'
+};
+const AR_PROV_KEYS = Object.keys(AR_PROVINCES).sort((a,b)=>b.length-a.length);
+
+/* Longest name first so "provincia de buenos aires" is not eaten by the
+   shorter "buenos aires", and CABA stays distinct from the province.        */
+function arProvince(fragment){
+  const f = esFold(fragment).replace(/[.,;]/g, ' ').replace(/\s+/g,' ');
+  const hits = [];
+  for(const needle of AR_PROV_KEYS){
+    const re = new RegExp('(?:^|\\s)' + needle.replace(/[-/\\^$*+?.()|[\]{}]/g,'\\$&') + '(?:\\s|$)');
+    if(re.test(f)) hits.push(AR_PROVINCES[needle]);
+  }
+  return [...new Set(hits)];
+}
+
+function arDisease(sentence){
+  const f = esFold(sentence);
+  const hits = new Set();
+  for(const [needle, canonical] of AR_DISEASES){
+    /* "eti" is three letters and would match inside other words, so it only
+       counts as a standalone token. */
+    const re = needle === 'eti'
+      ? /(?:^|[\s(])eti(?:[\s).,;]|$)/
+      : new RegExp(needle.replace(/[-/\\^$*+?.()|[\]{}]/g,'\\$&'));
+    if(re.test(f)) hits.add(canonical);
+  }
+  /* Abstain when a sentence names two diseases. A number in "dengue y
+     chikungunya" cannot be attributed to either one, and guessing is how you
+     end up telling a health ministry their country has cases it does not. */
+  return hits.size === 1 ? [...hits][0] : null;
+}
+
+/* Spanish decimal: period groups thousands, comma marks the decimal.
+   "2.385,8" is two thousand three hundred eighty five point eight.          */
+function esRate(raw){
+  const s = esFold(raw);
+  if(!/^\d{1,3}(?:\.\d{3})*(?:,\d+)?$/.test(s) && !/^\d+(?:,\d+)?$/.test(s)) return null;
+  const n = parseFloat(s.replace(/\./g,'').replace(',','.'));
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/* A count, and never a piece of one. The guards on either side stop the
+   parser taking a bite out of a decimal: "la tasa de incidencia acumulada
+   nacional en 0,39 casos cada 100.000 habitantes" was being read as a
+   cumulative 39 cases of leptospirosis, because the bare digit run matched
+   the fraction. The lookbehind rejects a number that follows a digit, a
+   comma or a period, and the lookahead rejects one that is followed by a
+   decimal comma, so a rate is skipped whole rather than mined for digits.
+   Note the bulletin is not even consistent about which mark it uses: the
+   same special report writes 1,03 and 0.25 within two sentences. */
+const AR_NUM = '(?<![0-9.,])([0-9]{1,3}(?:\\.[0-9]{3})+|[0-9]+)(?![0-9]|[.,][0-9])';
+
+/* Veterinary surveillance shares these bulletins with human surveillance.
+   Matched against folded text, so no accents here. */
+const AR_ANIMAL = /canin[oa]s?|perros?|animales\s+de\s+(?:compania|produccion)|fauna\s+silvestre|bovin|porcin|equin|caprin|aviar|roedores/;
+
+/* Sentinel and laboratory figures are counts of what a sample of clinics and
+   labs happened to detect, not what the country reported. "Se detectaron 5
+   casos de influenza y 8 nuevos casos de VSR" is eight positives in the
+   ambulatory sentinel network over four weeks, and the SE 41 bulletin's own
+   national picture has RSV as the predominant virus in hospitalised
+   patients. Publishing the 8 as Argentina's RSV figure understates it by an
+   unknowable margin, so these sentences are left alone. */
+const AR_SENTINEL = /vigilancia\s+centinela|centinela\s+ambulatoria|codetecciones|casos?\s+estudiados|sobre\s+un\s+total\s+de|positividad/;
+
+/* Each pattern says what KIND of figure it found. The bulletin mixes weekly
+   new cases with season cumulatives in adjacent sentences, and conflating
+   them is the whole reason Argentina currently shows a February number as if
+   it were today's.                                                          */
+/* "casos" is often singular ("1 caso en Orán"), so every pattern accepts
+   both. And an unqualified count must NOT swallow a qualified one: the
+   chikungunya paragraph says "se registraron 291 casos sospechosos", and
+   reading that as 291 new cases turns one real case in Salta into a
+   national outbreak. QUALIFIER blocks exactly that.                         */
+/* The \b after casos? is load-bearing and was missing. Without it the engine
+   is free to match only "caso" out of "casos sospechosos", and QUALIFIER then
+   inspects the leftover "s sospechosos", finds no "sospechos" at position
+   zero, and lets the figure through. That is exactly how "se notificaron 291
+   casos sospechosos" became 291 confirmed cases of chikungunya when the true
+   number is one. */
+const CASE = '\\s+casos?\\b';
+const QUALIFIER = '(?!\\s*(?:sospechos|probable|descartad|en\\s+estudio|confirmad))';
+
+/* Spanish spells small counts out, and the bulletin does it exactly where it
+   matters: "solo se confirmó un caso". Accented verb endings also put the
+   word out of reach of \w, which only covers ASCII, so confirm\w+ never sees
+   "confirmó". Both are handled here. */
+const AR_ONE = '(un|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)';
+const AR_CONFIRM = '(?:confirmad[oa]s?|confirm[oó]|confirmaron|se\\s+ha[n]?\\s+confirmad[oa]s?)';
+const AR_ONLY = '(?:solo\\s+|sólo\\s+|únicamente\\s+)?';
+
+const AR_PATTERNS = [
+  { kind:'weekly',     re: new RegExp(AR_NUM + '\\s+(?:nuevos' + CASE + '|casos?\\b\\s+nuevos)', 'i') },
+  { kind:'weekly',     re: new RegExp('(?:se\\s+)?(?:notific\\w+|registr\\w+)\\s+' + AR_NUM + '\\s+(?:nuevos\\s+)?casos?\\b' + QUALIFIER, 'i') },
+  { kind:'confirmed',  re: new RegExp(AR_NUM + '\\s+casos?\\b\\s+confirmados?', 'i') },
+  { kind:'confirmed',  re: new RegExp(AR_CONFIRM + '\\s+' + AR_ONLY + AR_NUM + CASE, 'i') },
+  { kind:'confirmed',  re: new RegExp(AR_CONFIRM + '\\s+' + AR_ONLY + AR_ONE + CASE, 'i') },
+  { kind:'probable',   re: new RegExp(AR_NUM + '\\s+(?:casos?\\b\\s+)?probables?', 'i') },
+  { kind:'suspected',  re: new RegExp(AR_NUM + '\\s+(?:casos?\\b\\s+)?sospechosos?', 'i') },
+  { kind:'cumulative', re: new RegExp('(?:acumul\\w+|desde\\s+el\\s+inicio)[^.]{0,80}?' + AR_NUM + CASE + QUALIFIER, 'i') },
+  { kind:'deaths',     re: new RegExp(AR_NUM + '\\s+(?:fallecid\\w+|defunciones|muertes)', 'i') }
+];
+
+function arFigures(sentence){
+  const out = {};
+  for(const { kind, re } of AR_PATTERNS){
+    if(out[kind] != null) continue;
+    const m = sentence.match(re);
+    if(m){
+      const v = esNum(m[1]);
+      if(v != null) out[kind] = v;
+    }
+  }
+  const rate = sentence.match(/tasa\s+de\s+incidencia\s+(?:de\s+)?([0-9.,]+)/i);
+  if(rate){
+    const r = esRate(rate[1]);
+    if(r != null) out.per100k = r;
+  }
+  return out;
+}
+
+/* Strip tags, decode the handful of entities that matter, and split on
+   sentence ends. Keeping sentences separate is what lets us refuse to
+   attribute a number when two diseases share one.                           */
+function arText(html){
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, '.\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ').replace(/&aacute;/g,'á').replace(/&eacute;/g,'é')
+    .replace(/&iacute;/g,'í').replace(/&oacute;/g,'ó').replace(/&uacute;/g,'ú')
+    .replace(/&ntilde;/g,'ñ').replace(/&amp;/g,'&').replace(/&#(\d+);/g,(_,d)=>String.fromCharCode(+d))
+    .replace(/[ \t ]+/g, ' ');
+}
+
+function arSentences(text){
+  return text.split(/(?<=[.:;])\s+|\n+/).map(s => s.trim()).filter(s => s.length > 12);
+}
+
+/* A figure that is explicitly national or season-to-date, even when the
+   sentence also names the one place it happened. "Since the season began, 1
+   case has been confirmed in Orán, Salta" is Argentina's national total, not
+   a provincial aside. */
+const AR_NATIONAL_MARKER =
+  /desde\s+el\s+inicio|a\s+nivel\s+nacional|en\s+(?:todo\s+)?el\s+pa[ií]s|acumulad|en\s+la\s+se\s+\d+|informe\s+especial/i;
+
+function parseBEN(html, week, year){
+  const text = arText(html);
+  const national = [];
+  const regional = [];
+  const seen = new Map();
+
+  /* The bulletin names a disease once, in a paragraph's opening sentence, and
+     puts the numbers in the sentences after it. Reading sentence by sentence
+     alone loses dengue and chikungunya entirely, so each sentence inherits
+     its paragraph's disease when it names none of its own. A paragraph that
+     names two diseases passes nothing down, same abstention as before. */
+  for(const para of text.split(/\n+/)){
+    if(para.trim().length < 12) continue;
+    const paraDisease = arDisease(para);
+    const sentences = arSentences(para);
+
+    /* This is a map of human cases. The SE 41 leptospirosis report counts
+       dogs alongside people, and the canine numbers are the larger ones: 164
+       confirmed nationally against 76 in humans, and "de los 164 casos
+       registrados a nivel nacional, 84 corresponden a PBA, 28 a Córdoba y 16
+       a Entre Ríos" against human provincial figures of 40, none and 19.
+
+       A sentence that says it is counting animals is dropped outright. The
+       harder case is that one, which counts animals without saying so and
+       refers back to a total named two sentences earlier. So the animal
+       figures in the paragraph are collected first, and any later sentence
+       repeating one of them is dropped as a back-reference. */
+    const animalNums = new Set();
+    for(const s of sentences){
+      if(!AR_ANIMAL.test(esFold(s))) continue;
+      /* Percentages first, or the canine sentence's "un aumento del 76%"
+         enters this set and takes the 76 confirmed human cases two sentences
+         earlier down with it. */
+      for(const m of s.replace(/[0-9][0-9.,]*\s*%/g, ' ').matchAll(new RegExp(AR_NUM, 'g'))){
+        const v = esNum(m[1]);
+        if(v != null && v > 0) animalNums.add(v);
+      }
+    }
+
+    for(const sentence of sentences){
+      const disease = arDisease(sentence) || paraDisease;
+      if(!disease) continue;
+      const folded = esFold(sentence);
+      if(AR_ANIMAL.test(folded)) continue;
+      if(AR_SENTINEL.test(folded)) continue;
+
+      const f = arFigures(sentence);
+      if(Object.values(f).some(v => animalNums.has(v))) continue;
+
+      const provs = arProvince(sentence);
+      const count = f.confirmed ?? f.weekly ?? f.cumulative ?? null;
+      const isNational = AR_NATIONAL_MARKER.test(sentence);
+
+      /* Province line: names exactly one jurisdiction, carries a count, and
+         makes no claim to be a national figure. */
+      if(!isNational && provs.length === 1 && count != null){
+        regional.push({ province: provs[0], disease, cases: count });
+        continue;
+      }
+      /* Provinces named without a per-province split tell us where the
+         disease is, not how much. Recorded with no count rather than
+         carving up a national figure between them. */
+      if(provs.length && (count == null || isNational)){
+        for(const p of provs) regional.push({ province: p, disease, cases: null });
+        if(!isNational) continue;
+      }
+
+      if(count == null && f.per100k == null && f.deaths == null) continue;
+
+      const routine = AR_ROUTINE.has(disease);
+      /* For routine surveillance report the WEEK's cases, never the season
+         cumulative, and derive the weekly rate ourselves. The bulletin's own
+         "tasa de incidencia" is cumulative since week 1, so publishing it as
+         a weekly rate would paint an ordinary spring as an emergency. The
+         same reasoning drops the rate on everything else: every rate in this
+         bulletin is cumulative. */
+      const cases = routine
+        ? (f.weekly ?? null)
+        : (f.confirmed ?? f.weekly ?? f.cumulative ?? null);
+      const per100k = routine && f.weekly != null
+        ? +(f.weekly / AR_POP * 100000).toFixed(1)
+        : null;
+      /* The headline count comes first and the breakdown follows in later
+         sentences, so the first count for a disease wins and everything
+         after it only fills in blanks. That keeps "291 under investigation"
+         attached to chikungunya without letting it overwrite the 1 confirmed
+         case that is the actual figure. */
+      const already = seen.get(disease);
+      if(already){
+        for(const k of ['deaths','probable','suspected','cumulative']){
+          if(already[k] == null && f[k] != null) already[k] = f[k];
+        }
+        if(already.cases == null && cases != null) already.cases = cases;
+        continue;
+      }
+      if(cases == null && f.deaths == null) continue;
+
+      const rec = {
+        disease, cases, deaths: f.deaths ?? null, per100k, routine,
+        probable: f.probable ?? null, suspected: f.suspected ?? null,
+        cumulative: f.cumulative ?? null
+      };
+      seen.set(disease, rec);
+      national.push(rec);
+    }
+  }
+  return { national, regional };
+}
+
+/* ═══ ARGENTINA: THE BEN'S OWN JURISDICTION TABLES ═══════════════════════════
+   The news page carries the national headline and names the provinces in
+   prose, which is how it ends up saying "Salta, Catamarca, Chaco, Corrientes,
+   Córdoba, Buenos Aires y Neuquén" with one number for the seven of them. The
+   bulletin PDF behind it carries Table 1 and Table 2, which give every one of
+   the twenty-four jurisdictions its own row for dengue and chikungunya.
+
+   Each row reads:
+
+     Jurisdicción | SAV conf | SAV prob | CAV conf | CAV prob |
+                  [serotypes] | descartados | en estudio | total notificados |
+                  total casos
+
+   SAV is sin antecedente de viaje, so autochthonous or still unresolved; CAV
+   is con antecedente de viaje, so imported. Two things make the row safe to
+   read without knowing where the column headers landed in the extraction:
+
+     the first six numbers sum to the total notified, and
+     the two confirmed columns sum to the total cases.
+
+   Buenos Aires reads 0 1 3 1 DENV-3 38 49 92 3, and 0+1+3+1+38+49 is 92 while
+   0+3 is 3. Both hold. A row where either fails is dropped, and that matters
+   because the extraction does drop columns: in SE 41 the Jujuy and San Luis
+   rows of Table 2 come out with seven numbers instead of eight. Rather than
+   shifting everything one place left and inventing a figure for Jujuy, those
+   rows fail the sum and are left out.
+
+   The serotype column is the other trap. "DENV - 3" contains a digit, so a
+   naive sweep of the row's numbers returns nine of them with a 3 wedged in
+   the middle, and every column after it reads one place out. Serotype tokens
+   come out before anything is counted.                                      */
+
+/* The heading's full stop is gone by the time the anchor runs, because the
+   flattener turns any stop that is not grouping thousands into a space, so it
+   is optional here. The disease name is not optional: this bulletin numbers
+   its tables per section, and "Tabla 2." appears three times in SE 41 on
+   three unrelated subjects. */
+const AR_TABLE_DISEASE = [
+  { disease:'Dengue',      anchor:/tabla\s*1\s*\.?\s*dengue/i },
+  { disease:'Chikungunya', anchor:/tabla\s*2\s*\.?\s*fiebre\s+chikungunya/i }
+];
+
+/* Bulletin spelling on the left, the name this map uses on the right. The
+   tables abbreviate two of them and the rest match. */
+const AR_TABLE_ROWS = [
+  ['buenos aires',   'Buenos Aires'],
+  ['caba',           'Ciudad Autónoma de Buenos Aires'],
+  ['cordoba',        'Córdoba'],
+  ['entre rios',     'Entre Ríos'],
+  ['santa fe',       'Santa Fe'],
+  ['mendoza',        'Mendoza'],
+  ['san juan',       'San Juan'],
+  ['san luis',       'San Luis'],
+  ['chaco',          'Chaco'],
+  ['corrientes',     'Corrientes'],
+  ['formosa',        'Formosa'],
+  ['misiones',       'Misiones'],
+  ['catamarca',      'Catamarca'],
+  ['jujuy',          'Jujuy'],
+  ['la rioja',       'La Rioja'],
+  ['salta',          'Salta'],
+  ['s del estero',   'Santiago del Estero'],
+  ['santiago del estero', 'Santiago del Estero'],
+  ['tucuman',        'Tucumán'],
+  ['chubut',         'Chubut'],
+  ['la pampa',       'La Pampa'],
+  ['neuquen',        'Neuquén'],
+  ['rio negro',      'Río Negro'],
+  ['santa cruz',     'Santa Cruz'],
+  ['t del fuego',    'Tierra del Fuego'],
+  ['tierra del fuego', 'Tierra del Fuego']
+];
+
+const AR_T_INT = '\\d{1,3}(?:\\.\\d{3})+|\\d+';
+
+/* Folded, serotypes stripped, and a full stop that is not grouping thousands
+   turned into a space so "S. del Estero" and "T. del Fuego" match their keys
+   the way "Pte. Hayes" has to on the Paraguayan side. */
+function arTableFlat(text){
+  return esFold(text)
+    .replace(/den[vn]\s*-?\s*\d/g, ' ')
+    .replace(/(?<![0-9])\.(?![0-9])/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function parseARJurisdictions(text, disease, anchor){
+  const flat = arTableFlat(text);
+
+  /* Start at the table so a jurisdiction named in the prose above it cannot
+     be mistaken for a row, and stop at the next table heading. */
+  const m = anchor.exec(flat);
+  if(!m) return { rows: [], national: null };
+  let region = flat.slice(m.index);
+  const nextTable = region.slice(1).search(/\btabla\s*\d/i);
+  if(nextTable > 0) region = region.slice(0, nextTable + 1);
+
+  const eight = new Array(8).fill('(' + AR_T_INT + ')').join('\\s+');
+
+  function readRow(needle){
+    const re = new RegExp('\\b' + needle.replace(/[.*+?^${}()|[\]\\]/g, '\\async function fetchAR(){') + '\\s+' + eight + '\\b', 'g');
+    let r;
+    while((r = re.exec(region))){
+      const n = r.slice(1, 9).map(esNum);
+      if(n.some(v => v == null)) continue;
+      const [savC, savP, cavC, cavP, discarded, underStudy, notified, cases] = n;
+      if(savC + savP + cavC + cavP + discarded + underStudy !== notified) continue;
+      if(savC + cavC !== cases) continue;
+      return { cases, notified, confirmed: savC + cavC, probable: savP + cavP,
+               imported: cavC, local: savC, underStudy };
+    }
+    return null;
+  }
+
+  const rows = [];
+  const done = new Set();
+  for(const [needle, name] of AR_TABLE_ROWS){
+    if(done.has(name)) continue;
+    const got = readRow(needle);
+    if(!got) continue;
+    done.add(name);
+    rows.push({ province: name, disease, ...got });
+  }
+
+  const national = readRow('total pais');
+  return { rows, national };
+}
+
+function parseARTables(text){
+  const out = { provinces: [], national: [] };
+  for(const { disease, anchor } of AR_TABLE_DISEASE){
+    const { rows, national } = parseARJurisdictions(text, disease, anchor);
+    /* Twenty-four jurisdictions are always listed. Anything under half of
+       them means the table was not read properly, and a half-read table is
+       worse than none: the provinces that did parse would look like the only
+       ones with cases. */
+    if(rows.length < 12) continue;
+    out.provinces.push(...rows);
+    if(national) out.national.push({ disease, ...national });
+  }
+  return out;
+}
+
+const AR_BULLETIN_INDEX = y =>
+  'https://www.argentina.gob.ar/salud/boletin-epidemiologico-nacional/boletines-' + y;
+
+/* The bulletin filenames are not constructible and it is not close:
+   ben_831_se_41_vf-271026.pdf, ben-829_se_39_15102026.pdf,
+   ben-828-se-38-vf.pdf, ben_826_se_36_2109.pdf. The upload folder lies too,
+   saying 2026/01 for a bulletin published in October. So the links come off
+   the index page, and the week is read from the basename rather than from the
+   path, where "se" turns up inside other words. */
+async function fetchARTables(year){
+  const tried = [];
+
+  for(const y of [year, year - 1]){
+    let html;
+    try{
+      const res = await net(AR_BULLETIN_INDEX(y), { headers:{ 'user-agent':UA } }, 11000);
+      if(!res.ok){ tried.push(`index ${y}: HTTP ${res.status}`); continue; }
+      html = await res.text();
+    }catch(err){
+      tried.push(`index ${y}: ${err.message}`);
+      continue;
+    }
+
+    const links = [];
+    const re = /href="([^"]*ben[^"]*\.pdf)"/gi;
+    let m;
+    while((m = re.exec(html))){
+      const url = m[1].startsWith('http')
+        ? m[1]
+        : new URL(m[1], 'https://www.argentina.gob.ar').href;
+      const se = url.split('/').pop().match(/se[_-]?(\d{1,2})(?!\d)/i);
+      if(!se) continue;
+      links.push({ url, week: +se[1] });
+    }
+    if(!links.length){ tried.push(`index ${y}: no bulletin PDFs linked`); continue; }
+
+    links.sort((a, b) => b.week - a.week);
+
+    /* Only the newest two are opened. Each is four megabytes and ninety-odd
+       pages, and this runs inside a sixty second function alongside every
+       other source. */
+    for(const cand of links.slice(0, 2)){
+      try{
+        const text = await pdfText(cand.url);
+        const out = parseARTables(text);
+        if(out.provinces.length) return { ...out, url: cand.url, week: cand.week, year: y };
+        tried.push(`SE ${cand.week}: no readable jurisdiction table`);
+      }catch(err){
+        tried.push(`SE ${cand.week}: ${err.message}`);
+      }
+    }
+  }
+  throw new Error(tried.join(' | ') || 'no bulletin index answered');
+}
+
+async function fetchAR(){
+  const notes = [];
+  const now = new Date();
+  const jan1 = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+  const thisWeek = Math.ceil((((now - jan1) / 86400000) + jan1.getUTCDay() + 1) / 7);
+  const year = now.getUTCFullYear();
+
+  let chosen = null;
+  for(let back = 1; back <= AR_LOOKBACK && !chosen; back++){
+    /* In January the recent bulletins belong to last year's weeks. The URL
+       carries no year, so a wrapped week could serve a twelve-month-old page.
+       That is caught below: the age gate reads the page's own date, and
+       anything past AR_MAX_AGE_DAYS is hidden rather than published. */
+    let wk = thisWeek - back, wkYear = year;
+    if(wk < 1){ wk += 52; wkYear -= 1; }
+    const url = AR_NEWS(wk);
+    try{
+      const res = await net(url, { headers:{ 'user-agent':UA } }, 11000);
+      if(!res.ok){ notes.push(`SE ${wk}: HTTP ${res.status}`); continue; }
+      const html = await res.text();
+      if(!/boletin\s+epidemiologico/i.test(esFold(html))){
+        notes.push(`SE ${wk}: page exists but is not a BEN update`);
+        continue;
+      }
+      chosen = { url, week: wk, year: wkYear, html };
+    }catch(err){
+      notes.push(`SE ${wk}: ${err.message}`);
+    }
+  }
+  if(!chosen) throw new Error('no BEN news page answered in the last ' + AR_LOOKBACK + ' weeks');
+
+  /* Date it from the page's own published stamp when there is one, otherwise
+     from the epidemiological week. The week is what we label figures with
+     either way. */
+  const stamp = chosen.html.match(/datetime="(\d{4}-\d{2}-\d{2})/)
+             || chosen.html.match(/"datePublished"\s*:\s*"(\d{4}-\d{2}-\d{2})/);
+  const published = stamp ? new Date(stamp[1] + 'T00:00:00Z') : null;
+  const asOf = `${chosen.year}-W${String(chosen.week).padStart(2,'0')}`;
+  const ageDays = published
+    ? Math.round((Date.now() - published.getTime()) / 86400000)
+    : (thisWeek - chosen.week) * 7;
+
+  const { national, regional } = parseBEN(chosen.html, chosen.week, chosen.year);
+
+  const countries = {};
+  const admin1 = {};
+  const src = `Argentina MSAL, Boletín Epidemiológico Nacional SE ${chosen.week}/${chosen.year}`;
+
+  if(ageDays <= AR_MAX_AGE_DAYS){
+    if(national.length){
+      countries.ARG = { conf:'high', diseases: national.map(r => ({
+        name: r.disease,
+        cases: r.cases, deaths: r.deaths, cfr: null,
+        per100k: r.per100k, growth7d: null,
+        severity: severityFor(r.disease, r.cases, r.deaths),
+        routine: r.routine || undefined,
+        asOf,
+        source: src
+          + (r.cumulative != null && r.cumulative !== r.cases
+              ? ` — ${r.cumulative.toLocaleString()} cumulative this season` : '')
+          + (r.probable != null ? `, ${r.probable} probable` : '')
+          + (r.suspected != null ? `, ${r.suspected} under investigation` : ''),
+        url: chosen.url
+      })) };
+    }
+    for(const r of regional){
+      const key = 'ARG:' + r.province;
+      if(!admin1[key]) admin1[key] = { conf:'high', diseases: [] };
+      if(admin1[key].diseases.some(d => d.name === r.disease)) continue;
+      admin1[key].diseases.push({
+        name: r.disease,
+        cases: r.cases, deaths: null, cfr: null, per100k: null, growth7d: null,
+        severity: severityFor(r.disease, r.cases, null),
+        asOf,
+        source: r.cases == null
+          ? src + ' — reported present, no provincial count published'
+          : src,
+        url: chosen.url
+      });
+    }
+  }
+
+  /* The news page is a summary written for the press: it gives the national
+     headline and then names the provinces in a list, which is how it ends up
+     reporting "Salta, Catamarca, Chaco, Corrientes, Córdoba, Buenos Aires y
+     Neuquén" with a single number covering all seven. The bulletin PDF behind
+     it carries Table 1 and Table 2, a row per jurisdiction. Where those can
+     be read they replace the prose reading for dengue and chikungunya, which
+     is what the provincial detail in this map now rests on. */
+  let tables = null;
+  try{
+    tables = await fetchARTables(chosen.year);
+  }catch(err){
+    notes.push('Argentina BEN tables: could not read them (' + err.message + '), '
+             + 'provincial detail falls back to the news page');
+  }
+
+  if(tables && ageDays <= AR_MAX_AGE_DAYS){
+    const tsrc = `Argentina MSAL, Boletín Epidemiológico Nacional SE ${tables.week}/${tables.year}`;
+
+    for(const n of tables.national){
+      if(!countries.ARG) countries.ARG = { conf:'high', diseases: [] };
+      countries.ARG.diseases = countries.ARG.diseases.filter(d => d.name !== n.disease);
+      countries.ARG.diseases.push({
+        name: n.disease,
+        cases: n.cases, deaths: null, cfr: null, per100k: null, growth7d: null,
+        severity: n.cases > 0 ? floorFor(n.disease) : AR_PRESENT_ONLY,
+        asOf,
+        source: tsrc + ` — season to date: ${n.cases} confirmed`
+              + (n.imported ? ` (${n.imported} imported)` : '')
+              + `, ${n.probable} probable, ${n.underStudy.toLocaleString()} under investigation, `
+              + `${n.notified.toLocaleString()} notified in total`,
+        url: tables.url
+      });
+    }
+
+    for(const r of tables.provinces){
+      if(!r.notified) continue;                  // nothing was notified there at all
+      const key = 'ARG:' + r.province;
+      if(!admin1[key]) admin1[key] = { conf:'high', diseases: [] };
+      admin1[key].diseases = admin1[key].diseases.filter(d => d.name !== r.disease);
+      admin1[key].diseases.push({
+        name: r.disease,
+        cases: r.cases, deaths: null, cfr: null, per100k: null, growth7d: null,
+        /* Zero confirmed cases is zero confirmed cases, however many
+           notifications are still being worked through. Formosa has 386
+           dengue notifications and not one confirmation, and giving it the
+           disease's floor would paint it the same colour as a province with
+           an actual outbreak. It reads green, and the notification count sits
+           in the tooltip where a ministry can see it. */
+        severity: r.cases > 0 ? floorFor(r.disease) : AR_PRESENT_ONLY,
+        asOf,
+        source: tsrc + ` — ${r.cases} confirmed`
+              + (r.imported ? ` (${r.imported} imported)` : '')
+              + (r.probable ? `, ${r.probable} probable` : '')
+              + `, ${r.underStudy.toLocaleString()} under investigation, `
+              + `${r.notified.toLocaleString()} notified`,
+        url: tables.url
+      });
+    }
+
+    const withCases = tables.provinces.filter(r => r.cases > 0).length;
+    notes.push(`Argentina BEN tables: SE ${tables.week}/${tables.year}, `
+      + `${tables.provinces.length} jurisdiction rows across ${tables.national.length} diseases, `
+      + `${withCases} with confirmed cases`);
+  }
+
+  return {
+    countries, admin1, url: chosen.url, week: chosen.week, year: chosen.year, asOf, ageDays,
+    parsedNational: national.length,
+    parsedRegional: regional.length,
+    published: ageDays <= AR_MAX_AGE_DAYS,
+    datedVia: published ? 'the page timestamp' : 'the week number',
+    notes
+  };
+}
+
+
 export default async function handler(req, res){
   DEADLINE = Date.now() + BUDGET_MS;
   // Tell Vercel's CDN to cache this. WHO gets hit ~4 times a day total.
@@ -3376,6 +4522,72 @@ export default async function handler(req, res){
   }catch(err){
     notes.push('WHO AFRO bulletin failed: ' + err.message
       + ' | test it yourself: https://www.afro.who.int/outbreaks-and-emergencies-updates');
+  }
+
+  /* ── Paraguay ────────────────────────────────────────────────────────── */
+  try{
+    const py = await fetchPY();
+    let added = 0, regions = 0;
+    for(const [iso, rec] of Object.entries(py.countries)){
+      for(const d of rec.diseases) if(addIfNew(countries, iso, d, rec.conf)) added++;
+    }
+    for(const [key, rec] of Object.entries(py.admin1)){
+      if(admin1[key]){
+        for(const d of rec.diseases){
+          const k = diseaseKey(d.name);
+          if(!admin1[key].diseases.some(x => diseaseKey(x.name) === k)) admin1[key].diseases.push(d);
+        }
+      } else {
+        admin1[key] = rec;
+      }
+      regions++;
+    }
+    if(py.published){
+      notes.push(`Paraguay DGVS bulletin: SE ${py.week}/${py.year} (${py.ageDays}d old, dated via `
+        + `${py.datedVia}), read ${py.parsedNational} national figures and ${py.parsedDepartments} `
+        + `department rows, added ${added} national records across ${regions} departments — ${py.url}`);
+    } else {
+      notes.push(`Paraguay DGVS bulletin: HIDDEN — newest is SE ${py.week}/${py.year}, ${py.ageDays} `
+        + `days old, past the ${PY_MAX_AGE_DAYS}-day limit. It parsed ${py.parsedNational} figures; `
+        + `nothing was published.`);
+    }
+    if(py.notes.length) notes.push('Paraguay bulletins skipped: ' + py.notes.join(' | '));
+  }catch(err){
+    notes.push('Paraguay DGVS bulletin failed: ' + err.message
+      + ' | test it yourself: ' + PY_INDEX);
+  }
+
+  /* ── Argentina ───────────────────────────────────────────────────────── */
+  try{
+    const ar = await fetchAR();
+    let added = 0, provinces = 0;
+    for(const [iso, rec] of Object.entries(ar.countries)){
+      for(const d of rec.diseases) if(addIfNew(countries, iso, d, rec.conf)) added++;
+    }
+    for(const [key, rec] of Object.entries(ar.admin1)){
+      if(admin1[key]){
+        for(const d of rec.diseases){
+          const k = diseaseKey(d.name);
+          if(!admin1[key].diseases.some(x => diseaseKey(x.name) === k)) admin1[key].diseases.push(d);
+        }
+      } else {
+        admin1[key] = rec;
+      }
+      provinces++;
+    }
+    if(ar.published){
+      notes.push(`Argentina BEN: SE ${ar.week}/${ar.year} (${ar.ageDays}d old, dated via `
+        + `${ar.datedVia}), read ${ar.parsedNational} national figures and ${ar.parsedRegional} `
+        + `provincial rows, added ${added} national records across ${provinces} provinces — ${ar.url}`);
+    } else {
+      notes.push(`Argentina BEN: HIDDEN — newest is SE ${ar.week}/${ar.year}, ${ar.ageDays} days `
+        + `old, past the ${AR_MAX_AGE_DAYS}-day limit. It parsed ${ar.parsedNational} figures; `
+        + `nothing was published.`);
+    }
+    if(ar.notes.length) notes.push('Argentina weeks skipped: ' + ar.notes.join(' | '));
+  }catch(err){
+    notes.push('Argentina BEN failed: ' + err.message
+      + ' | test it yourself: ' + AR_NEWS(41));
   }
 
   /* The advisory sources run last on purpose. addIfNew() drops anything a
